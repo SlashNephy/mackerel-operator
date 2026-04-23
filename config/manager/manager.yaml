@@ -63,8 +63,17 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
+          - --policy=upsert-only
+          - --owner-id=default
+          - --hash-length=7
         image: controller:latest
         name: manager
+        env:
+        - name: MACKEREL_APIKEY
+          valueFrom:
+            secretKeyRef:
+              name: mackerel-api-key
+              key: apiKey
         ports: []
         securityContext:
           readOnlyRootFilesystem: true
