@@ -38,10 +38,71 @@ func TestHashDesiredIsStable(t *testing.T) {
 	}
 }
 
+func TestHashDesiredIgnoresHashField(t *testing.T) {
+	base := DesiredExternalMonitor{
+		Name:               "API health check",
+		URL:                "https://api.example.com/healthz",
+		Method:             "GET",
+		ExpectedStatusCode: intPtr(200),
+	}
+
+	first, err := HashDesired(DesiredExternalMonitor{
+		Name:               base.Name,
+		URL:                base.URL,
+		Method:             base.Method,
+		ExpectedStatusCode: base.ExpectedStatusCode,
+		Hash:               "aaaaaaaaaaaa",
+	}, 12)
+	if err != nil {
+		t.Fatalf("HashDesired first returned error: %v", err)
+	}
+
+	second, err := HashDesired(DesiredExternalMonitor{
+		Name:               base.Name,
+		URL:                base.URL,
+		Method:             base.Method,
+		ExpectedStatusCode: base.ExpectedStatusCode,
+		Hash:               "bbbbbbbbbbbb",
+	}, 12)
+	if err != nil {
+		t.Fatalf("HashDesired second returned error: %v", err)
+	}
+
+	if first != second {
+		t.Fatalf("hash changed when only Hash field differed: first=%q second=%q", first, second)
+	}
+}
+
 func TestHashDesiredRejectsInvalidLength(t *testing.T) {
-	_, err := HashDesired(DesiredExternalMonitor{}, 0)
-	if err == nil {
-		t.Fatal("HashDesired length 0 error = nil, want error")
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		length int
+	}{
+		{
+			name:   "negative",
+			length: -1,
+		},
+		{
+			name:   "zero",
+			length: 0,
+		},
+		{
+			name:   "too long",
+			length: 65,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := HashDesired(DesiredExternalMonitor{}, tt.length)
+			if err == nil {
+				t.Fatalf("HashDesired length %d error = nil, want error", tt.length)
+			}
+		})
 	}
 }
 
