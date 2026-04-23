@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mackerel-operator
+description: A Kubernetes operator that synchronizes ExternalMonitor resources with Mackerel external monitors.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

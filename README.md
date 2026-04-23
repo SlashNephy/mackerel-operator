@@ -52,6 +52,28 @@ mise exec -- make install
 mise exec -- go run ./cmd/main.go --policy=upsert-only --owner-id=default --hash-length=7
 ```
 
+## Installing With Helm
+
+Create a Secret that contains the Mackerel API key:
+
+```bash
+kubectl create namespace mackerel-operator-system
+kubectl create secret generic mackerel-api-key \
+  --namespace mackerel-operator-system \
+  --from-literal=apiKey=...
+```
+
+Install the chart:
+
+```bash
+helm install mackerel-operator ./charts/mackerel-operator \
+  --namespace mackerel-operator-system \
+  --set image.repository=ghcr.io/slashnephy/mackerel-operator \
+  --set image.tag=0.1.0
+```
+
+The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds/`.
+
 ## Deletion Policy
 
 - `upsert-only` creates and updates Mackerel monitors but does not delete them when CRDs are deleted.
