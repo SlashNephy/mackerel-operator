@@ -14,6 +14,18 @@ func TestBuildMarker(t *testing.T) {
 	}
 }
 
+func TestBuildMarkerEscapesUnsafeValues(t *testing.T) {
+	got := BuildMarker(Marker{
+		Resource: "externalmonitor/default/api-health",
+		Owner:    "team a,blue",
+		Hash:     "dead bee%",
+	})
+	want := "<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=team%20a%2Cblue,hash=dead%20bee%25 -->"
+	if got != want {
+		t.Fatalf("BuildMarker() = %q, want %q", got, want)
+	}
+}
+
 func TestParseMarker(t *testing.T) {
 	memo := "human memo\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
 	got, ok := ParseMarker(memo)
@@ -22,6 +34,29 @@ func TestParseMarker(t *testing.T) {
 	}
 	if got.Resource != "externalmonitor/default/api-health" || got.Owner != "prod" || got.Hash != "deadbee" {
 		t.Fatalf("ParseMarker() = %#v", got)
+	}
+}
+
+func TestParseMarkerRoundTripsEscapedValues(t *testing.T) {
+	marker := Marker{
+		Resource: "externalmonitor/default/api-health",
+		Owner:    "team a,blue",
+		Hash:     "dead bee%",
+	}
+
+	got, ok := ParseMarker(BuildMarker(marker))
+	if !ok {
+		t.Fatal("ParseMarker ok = false, want true")
+	}
+	if got != marker {
+		t.Fatalf("ParseMarker() = %#v, want %#v", got, marker)
+	}
+}
+
+func TestParseMarkerRejectsInvalidEscapes(t *testing.T) {
+	_, ok := ParseMarker("<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=%zz,hash=deadbee -->")
+	if ok {
+		t.Fatal("ParseMarker ok = true, want false")
 	}
 }
 

@@ -3,6 +3,7 @@ package ownership
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -17,7 +18,13 @@ type Marker struct {
 }
 
 func BuildMarker(marker Marker) string {
-	return fmt.Sprintf("<!-- heritage=%s,resource=%s,owner=%s,hash=%s -->", Heritage, marker.Resource, marker.Owner, marker.Hash)
+	return fmt.Sprintf(
+		"<!-- heritage=%s,resource=%s,owner=%s,hash=%s -->",
+		Heritage,
+		escapeMarkerValue(marker.Resource),
+		escapeMarkerValue(marker.Owner),
+		escapeMarkerValue(marker.Hash),
+	)
 }
 
 func ParseMarker(memo string) (Marker, bool) {
@@ -25,10 +32,22 @@ func ParseMarker(memo string) (Marker, bool) {
 	if matches == nil {
 		return Marker{}, false
 	}
+	resource, err := unescapeMarkerValue(matches[1])
+	if err != nil {
+		return Marker{}, false
+	}
+	owner, err := unescapeMarkerValue(matches[2])
+	if err != nil {
+		return Marker{}, false
+	}
+	hash, err := unescapeMarkerValue(matches[3])
+	if err != nil {
+		return Marker{}, false
+	}
 	return Marker{
-		Resource: matches[1],
-		Owner:    matches[2],
-		Hash:     matches[3],
+		Resource: resource,
+		Owner:    owner,
+		Hash:     hash,
 	}, true
 }
 
@@ -45,4 +64,52 @@ func ApplyMarker(memo string, marker Marker) string {
 
 func RemoveMarker(memo string) string {
 	return markerPattern.ReplaceAllString(memo, "")
+}
+
+func escapeMarkerValue(value string) string {
+	var builder strings.Builder
+	for i := 0; i < len(value); i++ {
+		b := value[i]
+		if isMarkerValueSafe(b) {
+			builder.WriteByte(b)
+			continue
+		}
+		builder.WriteString(fmt.Sprintf("%%%02X", b))
+	}
+	return builder.String()
+}
+
+func unescapeMarkerValue(value string) (string, error) {
+	var builder strings.Builder
+	for i := 0; i < len(value); i++ {
+		if value[i] != '%' {
+			builder.WriteByte(value[i])
+			continue
+		}
+		if i+2 >= len(value) {
+			return "", fmt.Errorf("invalid percent escape")
+		}
+		decoded, err := strconv.ParseUint(value[i+1:i+3], 16, 8)
+		if err != nil {
+			return "", fmt.Errorf("invalid percent escape: %w", err)
+		}
+		builder.WriteByte(byte(decoded))
+		i += 2
+	}
+	return builder.String(), nil
+}
+
+func isMarkerValueSafe(b byte) bool {
+	switch {
+	case 'a' <= b && b <= 'z':
+		return true
+	case 'A' <= b && b <= 'Z':
+		return true
+	case '0' <= b && b <= '9':
+		return true
+	case b == '-' || b == '_' || b == '.' || b == '/':
+		return true
+	default:
+		return false
+	}
 }
