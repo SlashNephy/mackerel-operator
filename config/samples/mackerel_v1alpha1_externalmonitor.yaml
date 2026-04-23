@@ -4,5 +4,17 @@ metadata:
   labels:
     app.kubernetes.io/name: mackerel-operator
     app.kubernetes.io/managed-by: kustomize
-  name: externalmonitor-sample
-spec: {}
+  name: api-health
+spec:
+  name: API health check
+  service: my-service
+  url: https://api.example.com/healthz
+  method: GET
+  notificationInterval: 10
+  expectedStatusCode: 200
+  containsString: ok
+  responseTimeWarning: 3000
+  responseTimeCritical: 5000
+  certificationExpirationWarning: 30
+  certificationExpirationCritical: 14
+  memo: Managed by Kubernetes

@@ -25,43 +25,51 @@ import (
 
 // ExternalMonitorSpec defines the desired state of ExternalMonitor
 type ExternalMonitorSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-
-	// foo is an example field of ExternalMonitor. Edit externalmonitor_types.go to remove/update
-	// +optional
-	Foo *string `json:"foo,omitempty"`
+	Name                            string `json:"name,omitempty"`
+	Service                         string `json:"service,omitempty"`
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^https?://.+`
+	URL string `json:"url"`
+	// +kubebuilder:validation:Enum=GET;POST;PUT;DELETE
+	// +kubebuilder:default=GET
+	Method string `json:"method,omitempty"`
+	// +kubebuilder:validation:Minimum=10
+	NotificationInterval *int `json:"notificationInterval,omitempty"`
+	// +kubebuilder:validation:Minimum=100
+	// +kubebuilder:validation:Maximum=599
+	ExpectedStatusCode *int `json:"expectedStatusCode,omitempty"`
+	ContainsString string `json:"containsString,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	ResponseTimeWarning *int `json:"responseTimeWarning,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	ResponseTimeCritical *int `json:"responseTimeCritical,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	CertificationExpirationWarning *int `json:"certificationExpirationWarning,omitempty"`
+	// +kubebuilder:validation:Minimum=0
+	CertificationExpirationCritical *int `json:"certificationExpirationCritical,omitempty"`
+	Memo string `json:"memo,omitempty"`
 }
 
 // ExternalMonitorStatus defines the observed state of ExternalMonitor.
 type ExternalMonitorStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// For Kubernetes API conventions, see:
-	// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
-
-	// conditions represent the current state of the ExternalMonitor resource.
-	// Each condition has a unique type and reflects the status of a specific aspect of the resource.
-	//
-	// Standard condition types include:
-	// - "Available": the resource is fully functional
-	// - "Progressing": the resource is being created or updated
-	// - "Degraded": the resource failed to reach or maintain its desired state
-	//
-	// The status of each condition is one of True, False, or Unknown.
+	MonitorID           string             `json:"monitorID,omitempty"`
+	ObservedGeneration  int64              `json:"observedGeneration,omitempty"`
+	LastSyncedAt        *metav1.Time       `json:"lastSyncedAt,omitempty"`
+	LastAppliedHash     string             `json:"lastAppliedHash,omitempty"`
+	URL                 string             `json:"url,omitempty"`
+	MackerelMonitorName string             `json:"mackerelMonitorName,omitempty"`
 	// +listType=map
 	// +listMapKey=type
-	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// ExternalMonitor is the Schema for the externalmonitors API
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
-
-// ExternalMonitor is the Schema for the externalmonitors API
+// +kubebuilder:printcolumn:name="URL",type=string,JSONPath=`.status.url`
+// +kubebuilder:printcolumn:name="MonitorID",type=string,JSONPath=`.status.monitorID`
+// +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ExternalMonitor struct {
 	metav1.TypeMeta `json:",inline"`
 
@@ -78,9 +86,8 @@ type ExternalMonitor struct {
 	Status ExternalMonitorStatus `json:"status,omitzero"`
 }
 
-// +kubebuilder:object:root=true
-
 // ExternalMonitorList contains a list of ExternalMonitor
+// +kubebuilder:object:root=true
 type ExternalMonitorList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`

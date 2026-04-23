@@ -14,7 +14,20 @@ spec:
     singular: externalmonitor
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.url
+      name: URL
+      type: string
+    - jsonPath: .status.monitorID
+      name: MonitorID
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: ExternalMonitor is the Schema for the externalmonitors API
@@ -39,25 +52,51 @@ spec:
           spec:
             description: spec defines the desired state of ExternalMonitor
             properties:
-              foo:
-                description: foo is an example field of ExternalMonitor. Edit externalmonitor_types.go
-                  to remove/update
+              certificationExpirationCritical:
+                minimum: 0
+                type: integer
+              certificationExpirationWarning:
+                minimum: 0
+                type: integer
+              containsString:
                 type: string
+              expectedStatusCode:
+                maximum: 599
+                minimum: 100
+                type: integer
+              memo:
+                type: string
+              method:
+                default: GET
+                enum:
+                - GET
+                - POST
+                - PUT
+                - DELETE
+                type: string
+              name:
+                type: string
+              notificationInterval:
+                minimum: 10
+                type: integer
+              responseTimeCritical:
+                minimum: 0
+                type: integer
+              responseTimeWarning:
+                minimum: 0
+                type: integer
+              service:
+                type: string
+              url:
+                pattern: ^https?://.+
+                type: string
+            required:
+            - url
             type: object
           status:
             description: status defines the observed state of ExternalMonitor
             properties:
               conditions:
-                description: |-
-                  conditions represent the current state of the ExternalMonitor resource.
-                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
-                  Standard condition types include:
-                  - "Available": the resource is fully functional
-                  - "Progressing": the resource is being created or updated
-                  - "Degraded": the resource failed to reach or maintain its desired state
-
-                  The status of each condition is one of True, False, or Unknown.
                 items:
                   description: Condition contains details for one aspect of the current
                     state of this API Resource.
@@ -116,6 +155,20 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              lastAppliedHash:
+                type: string
+              lastSyncedAt:
+                format: date-time
+                type: string
+              mackerelMonitorName:
+                type: string
+              monitorID:
+                type: string
+              observedGeneration:
+                format: int64
+                type: integer
+              url:
+                type: string
             type: object
         required:
         - spec
