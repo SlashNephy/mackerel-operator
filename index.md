@@ -77,10 +77,12 @@ helm install mackerel-operator mackerel-operator/mackerel-operator \
   --namespace mackerel-operator-system \
   --create-namespace \
   --set image.repository=ghcr.io/slashnephy/mackerel-operator \
-  --set image.tag=0.1.0
+  --set image.tag=0.1.1
 ```
 
 The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds/`.
+The release workflow publishes `ghcr.io/slashnephy/mackerel-operator:<chart version>`
+and `ghcr.io/slashnephy/mackerel-operator:latest` to GHCR.
 
 ## Publishing Helm Chart With GitHub Pages
 
