@@ -1,11 +1,14 @@
 package source
 
 import (
+	"errors"
 	"fmt"
 
 	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
 	"github.com/SlashNephy/mackerel-operator/internal/monitor"
 )
+
+var ErrExternalMonitorNil = errors.New("external monitor is nil")
 
 type ExternalMonitorSource struct {
 	OwnerID    string
@@ -13,6 +16,10 @@ type ExternalMonitorSource struct {
 }
 
 func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.ExternalMonitor) (monitor.DesiredExternalMonitor, error) {
+	if cr == nil {
+		return monitor.DesiredExternalMonitor{}, ErrExternalMonitorNil
+	}
+
 	name := cr.Spec.Name
 	if name == "" {
 		name = fmt.Sprintf("%s/%s", cr.Namespace, cr.Name)
