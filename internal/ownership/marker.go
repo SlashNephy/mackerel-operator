@@ -44,18 +44,5 @@ func ApplyMarker(memo string, marker Marker) string {
 }
 
 func RemoveMarker(memo string) string {
-	idx := markerPattern.FindStringIndex(memo)
-	if idx == nil {
-		return memo
-	}
-
-	start, end := idx[0], idx[1]
-	if start > 0 && memo[start-1] == '\n' {
-		start--
-		if start > 0 && memo[start-1] == '\r' {
-			start--
-		}
-	}
-
-	return memo[:start] + memo[end:]
+	return markerPattern.ReplaceAllString(memo, "")
 }

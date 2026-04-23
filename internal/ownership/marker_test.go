@@ -49,6 +49,19 @@ func TestApplyMarkerReplacesExistingMarker(t *testing.T) {
 	}
 }
 
+func TestApplyMarkerPreservesBlankLinesBeforeExistingMarker(t *testing.T) {
+	memo := "human memo\n\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=oldhash -->"
+	got := ApplyMarker(memo, Marker{
+		Resource: "externalmonitor/default/api-health",
+		Owner:    "prod",
+		Hash:     "newhash",
+	})
+	want := "human memo\n\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=newhash -->"
+	if got != want {
+		t.Fatalf("ApplyMarker() = %q, want %q", got, want)
+	}
+}
+
 func TestApplyMarkerPreservesHumanMemoWhitespace(t *testing.T) {
 	memo := "  human memo  "
 	got := ApplyMarker(memo, Marker{
@@ -78,15 +91,15 @@ func TestApplyMarkerPreservesTrailingNewlines(t *testing.T) {
 func TestRemoveMarker(t *testing.T) {
 	memo := "human memo\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
 	got := RemoveMarker(memo)
-	if got != "human memo" {
-		t.Fatalf("RemoveMarker() = %q, want human memo", got)
+	if got != "human memo\n" {
+		t.Fatalf("RemoveMarker() = %q, want human memo\\n", got)
 	}
 }
 
 func TestRemoveMarkerPreservesHumanMemoWhitespace(t *testing.T) {
 	memo := "  human memo  \n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
 	got := RemoveMarker(memo)
-	want := "  human memo  "
+	want := "  human memo  \n"
 	if got != want {
 		t.Fatalf("RemoveMarker() = %q, want %q", got, want)
 	}
