@@ -65,6 +65,7 @@ spec:
                 minimum: 100
                 type: integer
               memo:
+                maxLength: 1900
                 type: string
               method:
                 default: GET

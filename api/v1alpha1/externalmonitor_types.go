@@ -47,6 +47,7 @@ type ExternalMonitorSpec struct {
 	CertificationExpirationWarning *int `json:"certificationExpirationWarning,omitempty"`
 	// +kubebuilder:validation:Minimum=0
 	CertificationExpirationCritical *int `json:"certificationExpirationCritical,omitempty"`
+	// +kubebuilder:validation:MaxLength=1900
 	Memo string `json:"memo,omitempty"`
 }
 
