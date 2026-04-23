@@ -86,7 +86,8 @@ The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds
 
 This repository includes `.github/workflows/release-chart.yml`, which uses
 `helm/chart-releaser-action` to publish `charts/mackerel-operator` as a Helm
-repository on GitHub Pages.
+repository on GitHub Pages and also copies `README.md` to the published
+`index.md`.
 
 One-time repository setup on GitHub:
 
@@ -96,7 +97,8 @@ One-time repository setup on GitHub:
 
 After that, every push to `main` runs the chart release workflow. When
 `charts/mackerel-operator/Chart.yaml` version changes, the workflow packages the
-chart, creates or updates the GitHub Release, and refreshes the Pages index.
+chart, creates or updates the GitHub Release, refreshes the Pages index, and
+updates the top page by syncing `README.md` to `index.md`.
 
 ## Deletion Policy
 

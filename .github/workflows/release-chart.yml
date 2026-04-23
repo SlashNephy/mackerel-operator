@@ -30,3 +30,18 @@ jobs:
           skip_existing: true
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Update Pages home on gh-pages
+        run: |
+          git fetch origin gh-pages
+          workdir="$(mktemp -d)"
+          git worktree add "$workdir" origin/gh-pages
+          cp README.md "$workdir/index.md"
+          cd "$workdir"
+          git add index.md
+          if git diff --cached --quiet; then
+            echo "No Pages home changes to commit"
+            exit 0
+          fi
+          git commit -m "docs: update Pages home"
+          git push origin HEAD:gh-pages
