@@ -54,6 +54,13 @@ mise exec -- go run ./cmd/main.go --policy=upsert-only --owner-id=default --hash
 
 ## Installing With Helm
 
+Once GitHub Pages publishing is enabled, add the chart repository:
+
+```bash
+helm repo add mackerel-operator https://slashnephy.github.io/mackerel-operator
+helm repo update
+```
+
 Create a Secret that contains the Mackerel API key:
 
 ```bash
@@ -66,13 +73,30 @@ kubectl create secret generic mackerel-api-key \
 Install the chart:
 
 ```bash
-helm install mackerel-operator ./charts/mackerel-operator \
+helm install mackerel-operator mackerel-operator/mackerel-operator \
   --namespace mackerel-operator-system \
+  --create-namespace \
   --set image.repository=ghcr.io/slashnephy/mackerel-operator \
   --set image.tag=0.1.0
 ```
 
 The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds/`.
+
+## Publishing Helm Chart With GitHub Pages
+
+This repository includes `.github/workflows/release-chart.yml`, which uses
+`helm/chart-releaser-action` to publish `charts/mackerel-operator` as a Helm
+repository on GitHub Pages.
+
+One-time repository setup on GitHub:
+
+1. Create and push an empty `gh-pages` branch.
+2. Open repository Settings > Pages.
+3. Set the publishing source to the `gh-pages` branch and the `/ (root)` folder.
+
+After that, every push to `main` runs the chart release workflow. When
+`charts/mackerel-operator/Chart.yaml` version changes, the workflow packages the
+chart, creates or updates the GitHub Release, and refreshes the Pages index.
 
 ## Deletion Policy
 
