@@ -101,3 +101,86 @@ func TestPlanDeleteUpsertOnlySkips(t *testing.T) {
 		t.Fatalf("Action = %s, want %s", decision.Action, ActionSkipDelete)
 	}
 }
+
+func TestPlanDeleteActualNilSkips(t *testing.T) {
+	decision := PlanDelete(nil, "prod", "externalmonitor/default/api", "sync")
+	if decision.Action != ActionSkipDelete {
+		t.Fatalf("Action = %s, want %s", decision.Action, ActionSkipDelete)
+	}
+}
+
+func TestPlanDeleteMissingMarkerSkips(t *testing.T) {
+	actual := &monitor.ActualExternalMonitor{
+		ID:   "mon-1",
+		Memo: "human memo",
+	}
+	decision := PlanDelete(actual, "prod", "externalmonitor/default/api", "sync")
+	if decision.Action != ActionSkipDelete {
+		t.Fatalf("Action = %s, want %s", decision.Action, ActionSkipDelete)
+	}
+}
+
+func TestPlanDeleteWrongOwnerSkips(t *testing.T) {
+	actual := &monitor.ActualExternalMonitor{
+		ID:   "mon-1",
+		Memo: ownership.BuildMarker(ownership.Marker{Resource: "externalmonitor/default/api", Owner: "staging", Hash: "deadbee"}),
+	}
+	decision := PlanDelete(actual, "prod", "externalmonitor/default/api", "sync")
+	if decision.Action != ActionSkipDelete {
+		t.Fatalf("Action = %s, want %s", decision.Action, ActionSkipDelete)
+	}
+}
+
+func TestPlanDeleteWrongResourceSkips(t *testing.T) {
+	actual := &monitor.ActualExternalMonitor{
+		ID:   "mon-1",
+		Memo: ownership.BuildMarker(ownership.Marker{Resource: "externalmonitor/default/other", Owner: "prod", Hash: "deadbee"}),
+	}
+	decision := PlanDelete(actual, "prod", "externalmonitor/default/api", "sync")
+	if decision.Action != ActionSkipDelete {
+		t.Fatalf("Action = %s, want %s", decision.Action, ActionSkipDelete)
+	}
+}
+
+func TestPlanDeleteUnknownPolicySkips(t *testing.T) {
+	actual := &monitor.ActualExternalMonitor{
+		ID:   "mon-1",
+		Memo: ownership.BuildMarker(ownership.Marker{Resource: "externalmonitor/default/api", Owner: "prod", Hash: "deadbee"}),
+	}
+	decision := PlanDelete(actual, "prod", "externalmonitor/default/api", "create-only")
+	if decision.Action != ActionSkipDelete {
+		t.Fatalf("Action = %s, want %s", decision.Action, ActionSkipDelete)
+	}
+}
+
+func TestPlanOwnershipLostWhenMarkerOwnerDiffers(t *testing.T) {
+	actual := monitor.ActualExternalMonitor{
+		ID:   "mon-1",
+		Name: "api",
+		URL:  "https://example.com",
+		Memo: ownership.BuildMarker(ownership.Marker{Resource: "externalmonitor/default/api", Owner: "staging", Hash: "deadbee"}),
+	}
+	decision := Plan(PlanInput{
+		Desired: monitor.DesiredExternalMonitor{Name: "api", URL: "https://example.com", Owner: "prod", Resource: "externalmonitor/default/api", Hash: "deadbee"},
+		Actual:  &actual,
+	})
+	if decision.Action != ActionOwnershipLost {
+		t.Fatalf("Action = %s, want %s", decision.Action, ActionOwnershipLost)
+	}
+}
+
+func TestPlanOwnershipLostWhenMarkerResourceDiffers(t *testing.T) {
+	actual := monitor.ActualExternalMonitor{
+		ID:   "mon-1",
+		Name: "api",
+		URL:  "https://example.com",
+		Memo: ownership.BuildMarker(ownership.Marker{Resource: "externalmonitor/default/other", Owner: "prod", Hash: "deadbee"}),
+	}
+	decision := Plan(PlanInput{
+		Desired: monitor.DesiredExternalMonitor{Name: "api", URL: "https://example.com", Owner: "prod", Resource: "externalmonitor/default/api", Hash: "deadbee"},
+		Actual:  &actual,
+	})
+	if decision.Action != ActionOwnershipLost {
+		t.Fatalf("Action = %s, want %s", decision.Action, ActionOwnershipLost)
+	}
+}
