@@ -7,7 +7,7 @@
 ## Getting Started
 
 ### Prerequisites
-- go version v1.26.2+
+- Go 1.26.2+
 - docker version 17.03+.
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
