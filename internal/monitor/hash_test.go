@@ -18,11 +18,12 @@ func TestHashDesiredDefaultLength(t *testing.T) {
 }
 
 func TestHashDesiredIsStable(t *testing.T) {
+	expectedStatusCode := 200
 	desired := DesiredExternalMonitor{
 		Name:               "API health check",
 		URL:                "https://api.example.com/healthz",
 		Method:             "GET",
-		ExpectedStatusCode: intPtr(200),
+		ExpectedStatusCode: &expectedStatusCode,
 	}
 
 	first, err := HashDesired(desired, 12)
@@ -39,11 +40,12 @@ func TestHashDesiredIsStable(t *testing.T) {
 }
 
 func TestHashDesiredIgnoresHashField(t *testing.T) {
+	expectedStatusCode := 200
 	base := DesiredExternalMonitor{
 		Name:               "API health check",
 		URL:                "https://api.example.com/healthz",
 		Method:             "GET",
-		ExpectedStatusCode: intPtr(200),
+		ExpectedStatusCode: &expectedStatusCode,
 	}
 
 	first, err := HashDesired(DesiredExternalMonitor{
@@ -104,8 +106,4 @@ func TestHashDesiredRejectsInvalidLength(t *testing.T) {
 			}
 		})
 	}
-}
-
-func intPtr(v int) *int {
-	return &v
 }

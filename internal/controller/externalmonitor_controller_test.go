@@ -71,8 +71,12 @@ var _ = Describe("ExternalMonitor Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &ExternalMonitorReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:     k8sClient,
+				Scheme:     k8sClient.Scheme(),
+				Provider:   newFakeExternalMonitorProvider(),
+				OwnerID:    "prod",
+				Policy:     "sync",
+				HashLength: 7,
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{

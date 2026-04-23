@@ -25,8 +25,8 @@ import (
 
 // ExternalMonitorSpec defines the desired state of ExternalMonitor
 type ExternalMonitorSpec struct {
-	Name                            string `json:"name,omitempty"`
-	Service                         string `json:"service,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Service string `json:"service,omitempty"`
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^https?://.+`
 	URL string `json:"url"`
@@ -37,8 +37,8 @@ type ExternalMonitorSpec struct {
 	NotificationInterval *int `json:"notificationInterval,omitempty"`
 	// +kubebuilder:validation:Minimum=100
 	// +kubebuilder:validation:Maximum=599
-	ExpectedStatusCode *int `json:"expectedStatusCode,omitempty"`
-	ContainsString string `json:"containsString,omitempty"`
+	ExpectedStatusCode *int   `json:"expectedStatusCode,omitempty"`
+	ContainsString     string `json:"containsString,omitempty"`
 	// +kubebuilder:validation:Minimum=0
 	ResponseTimeWarning *int `json:"responseTimeWarning,omitempty"`
 	// +kubebuilder:validation:Minimum=0
@@ -53,12 +53,12 @@ type ExternalMonitorSpec struct {
 
 // ExternalMonitorStatus defines the observed state of ExternalMonitor.
 type ExternalMonitorStatus struct {
-	MonitorID           string             `json:"monitorID,omitempty"`
-	ObservedGeneration  int64              `json:"observedGeneration,omitempty"`
-	LastSyncedAt        *metav1.Time       `json:"lastSyncedAt,omitempty"`
-	LastAppliedHash     string             `json:"lastAppliedHash,omitempty"`
-	URL                 string             `json:"url,omitempty"`
-	MackerelMonitorName string             `json:"mackerelMonitorName,omitempty"`
+	MonitorID           string       `json:"monitorID,omitempty"`
+	ObservedGeneration  int64        `json:"observedGeneration,omitempty"`
+	LastSyncedAt        *metav1.Time `json:"lastSyncedAt,omitempty"`
+	LastAppliedHash     string       `json:"lastAppliedHash,omitempty"`
+	URL                 string       `json:"url,omitempty"`
+	MackerelMonitorName string       `json:"mackerelMonitorName,omitempty"`
 	// +listType=map
 	// +listMapKey=type
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

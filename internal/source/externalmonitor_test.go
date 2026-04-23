@@ -8,6 +8,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const defaultMethod = "GET"
+
 func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 	interval := 10
 	expectedStatus := 200
@@ -25,7 +27,7 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 			Name:                            "API health check",
 			Service:                         "my-service",
 			URL:                             "https://api.example.com/healthz",
-			Method:                          "GET",
+			Method:                          defaultMethod,
 			NotificationInterval:            &interval,
 			ExpectedStatusCode:              &expectedStatus,
 			ContainsString:                  containsString,
@@ -51,7 +53,7 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 	if got.URL != "https://api.example.com/healthz" {
 		t.Fatalf("URL = %q", got.URL)
 	}
-	if got.Method != "GET" {
+	if got.Method != defaultMethod {
 		t.Fatalf("Method = %q", got.Method)
 	}
 	if got.NotificationInterval == nil || *got.NotificationInterval != interval {
@@ -123,7 +125,7 @@ func TestExternalMonitorSourceDefaultsNameAndMethod(t *testing.T) {
 	if got.Name != "default/api-health" {
 		t.Fatalf("Name = %q, want default/api-health", got.Name)
 	}
-	if got.Method != "GET" {
+	if got.Method != defaultMethod {
 		t.Fatalf("Method = %q, want GET", got.Method)
 	}
 }

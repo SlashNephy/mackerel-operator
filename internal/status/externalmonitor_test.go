@@ -36,7 +36,7 @@ func TestMarkReady(t *testing.T) {
 	if cr.Status.MackerelMonitorName != "API health check" {
 		t.Fatalf("MackerelMonitorName = %q", cr.Status.MackerelMonitorName)
 	}
-	cond := findCondition(cr, ConditionReady)
+	cond := findReadyCondition(cr)
 	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != ReasonSynced {
 		t.Fatalf("Ready condition = %#v", cond)
 	}
@@ -51,7 +51,7 @@ func TestMarkOwnershipLost(t *testing.T) {
 	if cr.Status.ObservedGeneration != 5 {
 		t.Fatalf("ObservedGeneration = %d", cr.Status.ObservedGeneration)
 	}
-	cond := findCondition(cr, ConditionReady)
+	cond := findReadyCondition(cr)
 	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != ReasonOwnershipLost {
 		t.Fatalf("Ready condition = %#v", cond)
 	}
@@ -66,7 +66,7 @@ func TestMarkInvalidSpec(t *testing.T) {
 	if cr.Status.ObservedGeneration != 7 {
 		t.Fatalf("ObservedGeneration = %d", cr.Status.ObservedGeneration)
 	}
-	cond := findCondition(cr, ConditionReady)
+	cond := findReadyCondition(cr)
 	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != ReasonInvalidSpec || cond.Message != "url is required" {
 		t.Fatalf("Ready condition = %#v", cond)
 	}
@@ -81,7 +81,7 @@ func TestMarkError(t *testing.T) {
 	if cr.Status.ObservedGeneration != 11 {
 		t.Fatalf("ObservedGeneration = %d", cr.Status.ObservedGeneration)
 	}
-	cond := findCondition(cr, ConditionReady)
+	cond := findReadyCondition(cr)
 	if cond == nil || cond.Status != metav1.ConditionFalse || cond.Reason != "ProviderError" || cond.Message != "rate limited" {
 		t.Fatalf("Ready condition = %#v", cond)
 	}
@@ -103,7 +103,7 @@ func TestSetConditionPreservesLastTransitionTimeWhenStatusDoesNotChange(t *testi
 
 	MarkReady(cr, SyncResult{})
 
-	cond := findCondition(cr, ConditionReady)
+	cond := findReadyCondition(cr)
 	if cond == nil {
 		t.Fatal("Ready condition is nil")
 	}
@@ -130,7 +130,7 @@ func TestSetConditionUpdatesLastTransitionTimeWhenStatusChanges(t *testing.T) {
 
 	MarkReady(cr, SyncResult{})
 
-	cond := findCondition(cr, ConditionReady)
+	cond := findReadyCondition(cr)
 	if cond == nil {
 		t.Fatal("Ready condition is nil")
 	}
@@ -139,9 +139,9 @@ func TestSetConditionUpdatesLastTransitionTimeWhenStatusChanges(t *testing.T) {
 	}
 }
 
-func findCondition(cr *mackerelv1alpha1.ExternalMonitor, conditionType string) *metav1.Condition {
+func findReadyCondition(cr *mackerelv1alpha1.ExternalMonitor) *metav1.Condition {
 	for i := range cr.Status.Conditions {
-		if cr.Status.Conditions[i].Type == conditionType {
+		if cr.Status.Conditions[i].Type == ConditionReady {
 			return &cr.Status.Conditions[i]
 		}
 	}

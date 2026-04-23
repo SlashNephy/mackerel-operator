@@ -2,13 +2,15 @@ package ownership
 
 import "testing"
 
+const deadbeeMarker = "<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+
 func TestBuildMarker(t *testing.T) {
 	got := BuildMarker(Marker{
 		Resource: "externalmonitor/default/api-health",
 		Owner:    "prod",
 		Hash:     "deadbee",
 	})
-	want := "<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	want := deadbeeMarker
 	if got != want {
 		t.Fatalf("BuildMarker() = %q, want %q", got, want)
 	}
@@ -27,7 +29,7 @@ func TestBuildMarkerEscapesUnsafeValues(t *testing.T) {
 }
 
 func TestParseMarker(t *testing.T) {
-	memo := "human memo\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	memo := "human memo\n" + deadbeeMarker
 	got, ok := ParseMarker(memo)
 	if !ok {
 		t.Fatal("ParseMarker ok = false, want true")
@@ -66,7 +68,7 @@ func TestApplyMarkerPreservesHumanMemo(t *testing.T) {
 		Owner:    "prod",
 		Hash:     "deadbee",
 	})
-	want := "human memo\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	want := "human memo\n" + deadbeeMarker
 	if got != want {
 		t.Fatalf("ApplyMarker() = %q, want %q", got, want)
 	}
@@ -104,7 +106,7 @@ func TestApplyMarkerPreservesHumanMemoWhitespace(t *testing.T) {
 		Owner:    "prod",
 		Hash:     "deadbee",
 	})
-	want := "  human memo  \n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	want := "  human memo  \n" + deadbeeMarker
 	if got != want {
 		t.Fatalf("ApplyMarker() = %q, want %q", got, want)
 	}
@@ -117,14 +119,14 @@ func TestApplyMarkerPreservesTrailingNewlines(t *testing.T) {
 		Owner:    "prod",
 		Hash:     "deadbee",
 	})
-	want := "human memo\n\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	want := "human memo\n\n" + deadbeeMarker
 	if got != want {
 		t.Fatalf("ApplyMarker() = %q, want %q", got, want)
 	}
 }
 
 func TestRemoveMarker(t *testing.T) {
-	memo := "human memo\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	memo := "human memo\n" + deadbeeMarker
 	got := RemoveMarker(memo)
 	if got != "human memo\n" {
 		t.Fatalf("RemoveMarker() = %q, want human memo\\n", got)
@@ -132,7 +134,7 @@ func TestRemoveMarker(t *testing.T) {
 }
 
 func TestRemoveMarkerPreservesHumanMemoWhitespace(t *testing.T) {
-	memo := "  human memo  \n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	memo := "  human memo  \n" + deadbeeMarker
 	got := RemoveMarker(memo)
 	want := "  human memo  \n"
 	if got != want {
