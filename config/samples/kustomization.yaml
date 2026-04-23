@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- mackerel_v1alpha1_externalmonitor.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

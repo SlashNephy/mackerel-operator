@@ -1,0 +1,9 @@
+apiVersion: mackerel.starry.blue/v1alpha1
+kind: ExternalMonitor
+metadata:
+  labels:
+    app.kubernetes.io/name: mackerel-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: externalmonitor-sample
+spec:
+  # TODO(user): Add fields here
