@@ -37,7 +37,10 @@ func ApplyMarker(memo string, marker Marker) string {
 	if base == "" {
 		return BuildMarker(marker)
 	}
-	return strings.TrimRight(base, "\n") + "\n" + BuildMarker(marker)
+	if strings.HasSuffix(base, "\n") {
+		return base + BuildMarker(marker)
+	}
+	return base + "\n" + BuildMarker(marker)
 }
 
 func RemoveMarker(memo string) string {

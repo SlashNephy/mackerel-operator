@@ -62,6 +62,19 @@ func TestApplyMarkerPreservesHumanMemoWhitespace(t *testing.T) {
 	}
 }
 
+func TestApplyMarkerPreservesTrailingNewlines(t *testing.T) {
+	memo := "human memo\n\n"
+	got := ApplyMarker(memo, Marker{
+		Resource: "externalmonitor/default/api-health",
+		Owner:    "prod",
+		Hash:     "deadbee",
+	})
+	want := "human memo\n\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
+	if got != want {
+		t.Fatalf("ApplyMarker() = %q, want %q", got, want)
+	}
+}
+
 func TestRemoveMarker(t *testing.T) {
 	memo := "human memo\n<!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->"
 	got := RemoveMarker(memo)
