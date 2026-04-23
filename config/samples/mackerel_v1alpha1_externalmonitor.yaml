@@ -5,5 +5,4 @@ metadata:
     app.kubernetes.io/name: mackerel-operator
     app.kubernetes.io/managed-by: kustomize
   name: externalmonitor-sample
-spec:
-  # TODO(user): Add fields here
+spec: {}
