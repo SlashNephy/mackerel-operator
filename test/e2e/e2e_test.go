@@ -68,6 +68,14 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to install CRDs")
 
+		By("creating Mackerel API key secret")
+		cmd = exec.Command("kubectl", "create", "secret", "generic", "mackerel-api-key",
+			"-n", namespace,
+			"--from-literal=apiKey=dummy-api-key",
+		)
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to create Mackerel API key secret")
+
 		By("deploying the controller-manager")
 		cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", managerImage))
 		_, err = utils.Run(cmd)
