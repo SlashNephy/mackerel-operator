@@ -34,13 +34,25 @@ func ParseMarker(memo string) (Marker, bool) {
 
 func ApplyMarker(memo string, marker Marker) string {
 	base := RemoveMarker(memo)
-	if strings.TrimSpace(base) == "" {
+	if base == "" {
 		return BuildMarker(marker)
 	}
 	return strings.TrimRight(base, "\n") + "\n" + BuildMarker(marker)
 }
 
 func RemoveMarker(memo string) string {
-	without := markerPattern.ReplaceAllString(memo, "")
-	return strings.TrimRight(strings.TrimSpace(without), "\n")
+	idx := markerPattern.FindStringIndex(memo)
+	if idx == nil {
+		return memo
+	}
+
+	start, end := idx[0], idx[1]
+	if start > 0 && memo[start-1] == '\n' {
+		start--
+		if start > 0 && memo[start-1] == '\r' {
+			start--
+		}
+	}
+
+	return memo[:start] + memo[end:]
 }
