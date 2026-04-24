@@ -16,12 +16,25 @@ const (
 )
 
 func SourceFromObject(obj client.Object) (SourceInput, error) {
+	if obj == nil {
+		return SourceInput{}, fmt.Errorf("nil object")
+	}
+
 	switch o := obj.(type) {
 	case *appsv1.Deployment:
+		if o == nil {
+			return SourceInput{}, fmt.Errorf("nil object")
+		}
 		return sourceFromTemplate("Deployment", o.Namespace, o.Name, o.Spec.Template.Annotations), nil
 	case *appsv1.StatefulSet:
+		if o == nil {
+			return SourceInput{}, fmt.Errorf("nil object")
+		}
 		return sourceFromTemplate("StatefulSet", o.Namespace, o.Name, o.Spec.Template.Annotations), nil
 	case *appsv1.DaemonSet:
+		if o == nil {
+			return SourceInput{}, fmt.Errorf("nil object")
+		}
 		return sourceFromTemplate("DaemonSet", o.Namespace, o.Name, o.Spec.Template.Annotations), nil
 	default:
 		return SourceInput{}, fmt.Errorf("unsupported object type %T", obj)

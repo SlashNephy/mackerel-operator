@@ -22,6 +22,16 @@ func TestSourceFromObject(t *testing.T) {
 		wantErr string
 	}{
 		{
+			name:    "nil object",
+			object:  nil,
+			wantErr: "nil object",
+		},
+		{
+			name:    "typed nil deployment",
+			object:  (*appsv1.Deployment)(nil),
+			wantErr: "nil object",
+		},
+		{
 			name: "deployment",
 			object: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "app"},

@@ -14,12 +14,3 @@ type SourceInput struct {
 	APIKeySecretKey  string
 	ConfigSecretName string
 }
-
-type Config struct {
-	Target           TargetRef
-	Enabled          bool
-	Image            string
-	APIKeySecretName string
-	APIKeySecretKey  string
-	ConfigSecretName string
-}
