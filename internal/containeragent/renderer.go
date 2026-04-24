@@ -12,6 +12,9 @@ func RenderManagedPodSpec(cfg Config) ManagedPodSpec {
 	if !cfg.Enabled {
 		return ManagedPodSpec{}
 	}
+	if cfg.Image == "" || cfg.APIKeySecretName == "" || cfg.APIKeySecretKey == "" {
+		return ManagedPodSpec{}
+	}
 
 	return ManagedPodSpec{
 		Containers: []corev1.Container{

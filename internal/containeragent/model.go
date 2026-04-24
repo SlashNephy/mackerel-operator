@@ -21,4 +21,5 @@ type Config struct {
 	Image            string
 	APIKeySecretName string
 	APIKeySecretKey  string
+	ConfigSecretName string
 }

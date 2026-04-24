@@ -31,6 +31,57 @@ func TestResolveConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "disabled preserves raw values without defaulting",
+			input: SourceInput{
+				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled:          false,
+				Image:            "example.com/agent:latest",
+				APIKeySecretName: "custom-secret",
+				APIKeySecretKey:  "custom-key",
+				ConfigSecretName: "agent-config",
+			},
+			want: Config{
+				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled:          false,
+				Image:            "example.com/agent:latest",
+				APIKeySecretName: "custom-secret",
+				APIKeySecretKey:  "custom-key",
+				ConfigSecretName: "agent-config",
+			},
+		},
+		{
+			name: "applies default key for secret name override",
+			input: SourceInput{
+				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled:          true,
+				APIKeySecretName: "custom-secret",
+			},
+			want: Config{
+				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled:          true,
+				Image:            defaultImage,
+				APIKeySecretName: "custom-secret",
+				APIKeySecretKey:  defaultAPIKeySecretKey,
+			},
+		},
+		{
+			name: "preserves image override and config secret name",
+			input: SourceInput{
+				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled:          true,
+				Image:            "example.com/agent:latest",
+				ConfigSecretName: "agent-config",
+			},
+			want: Config{
+				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled:          true,
+				Image:            "example.com/agent:latest",
+				APIKeySecretName: defaultAPIKeySecretName,
+				APIKeySecretKey:  defaultAPIKeySecretKey,
+				ConfigSecretName: "agent-config",
+			},
+		},
+		{
 			name: "rejects missing secret name when key override is set",
 			input: SourceInput{
 				Target:          TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
