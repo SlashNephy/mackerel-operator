@@ -12,7 +12,7 @@ func ResolveConfig(input SourceInput) (Config, error) {
 	cfg := Config{
 		Target:           input.Target,
 		Enabled:          input.Enabled,
-		Image:            defaultString(input.Image, defaultImage),
+		Image:            input.Image,
 		APIKeySecretName: input.APIKeySecretName,
 		APIKeySecretKey:  input.APIKeySecretKey,
 		ConfigSecretName: input.ConfigSecretName,
@@ -21,6 +21,8 @@ func ResolveConfig(input SourceInput) (Config, error) {
 	if !cfg.Enabled {
 		return cfg, nil
 	}
+
+	cfg.Image = defaultString(cfg.Image, defaultImage)
 
 	if cfg.APIKeySecretKey != "" && cfg.APIKeySecretName == "" {
 		return Config{}, fmt.Errorf("api key secret name is required when api key secret key is set")

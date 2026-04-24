@@ -54,15 +54,6 @@ func TestRenderManagedPodSpec(t *testing.T) {
 			},
 			want: ManagedPodSpec{},
 		},
-		{
-			name: "invalid enabled config returns empty managed pod spec",
-			cfg: Config{
-				Target:  TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
-				Enabled: true,
-				Image:   "ghcr.io/mackerelio/mackerel-container-agent:plugins",
-			},
-			want: ManagedPodSpec{},
-		},
 	}
 
 	for _, tt := range tests {

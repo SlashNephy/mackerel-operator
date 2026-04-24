@@ -50,6 +50,17 @@ func TestResolveConfig(t *testing.T) {
 			},
 		},
 		{
+			name: "disabled preserves empty fields without defaulting",
+			input: SourceInput{
+				Target:  TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled: false,
+			},
+			want: Config{
+				Target:  TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled: false,
+			},
+		},
+		{
 			name: "applies default key for secret name override",
 			input: SourceInput{
 				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
