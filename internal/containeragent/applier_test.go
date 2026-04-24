@@ -32,21 +32,39 @@ func TestApplyManagedPodSpecAddsSidecar(t *testing.T) {
 	assert.Equal(t, managedContainerName, template.Spec.Containers[1].Name)
 }
 
-func TestApplyManagedPodSpecReplacesManagedSidecarWithoutTouchingUserContainers(t *testing.T) {
+func TestApplyManagedPodSpecMergesManagedFieldsWithoutTouchingUserContainers(t *testing.T) {
 	t.Parallel()
 
 	template := corev1.PodTemplateSpec{
 		Spec: corev1.PodSpec{
 			Containers: []corev1.Container{
 				{Name: "app", Image: "example.com/app:latest"},
-				{Name: managedContainerName, Image: "agent:old"},
+				{
+					Name:  managedContainerName,
+					Image: "agent:old",
+					Env: []corev1.EnvVar{
+						{Name: "MACKEREL_APIKEY", Value: "old"},
+					},
+					Ports: []corev1.ContainerPort{
+						{ContainerPort: 4317, Name: "otlp"},
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{Name: "agent-config", MountPath: "/etc/agent"},
+					},
+				},
 			},
 		},
 	}
 
 	changed := ApplyManagedPodSpec(&template, ManagedPodSpec{
 		Containers: []corev1.Container{
-			{Name: managedContainerName, Image: "agent:new"},
+			{
+				Name:  managedContainerName,
+				Image: "agent:new",
+				Env: []corev1.EnvVar{
+					{Name: "MACKEREL_APIKEY", Value: "new"},
+				},
+			},
 		},
 	})
 
@@ -56,6 +74,9 @@ func TestApplyManagedPodSpecReplacesManagedSidecarWithoutTouchingUserContainers(
 	assert.Equal(t, "example.com/app:latest", template.Spec.Containers[0].Image)
 	assert.Equal(t, managedContainerName, template.Spec.Containers[1].Name)
 	assert.Equal(t, "agent:new", template.Spec.Containers[1].Image)
+	assert.Equal(t, []corev1.EnvVar{{Name: "MACKEREL_APIKEY", Value: "new"}}, template.Spec.Containers[1].Env)
+	assert.Equal(t, []corev1.ContainerPort{{ContainerPort: 4317, Name: "otlp"}}, template.Spec.Containers[1].Ports)
+	assert.Equal(t, []corev1.VolumeMount{{Name: "agent-config", MountPath: "/etc/agent"}}, template.Spec.Containers[1].VolumeMounts)
 }
 
 func TestApplyManagedPodSpecRemovesManagedSidecarWhenEmpty(t *testing.T) {

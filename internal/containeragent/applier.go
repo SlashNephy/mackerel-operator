@@ -45,12 +45,13 @@ func ApplyManagedPodSpec(template *corev1.PodTemplateSpec, managed ManagedPodSpe
 		}
 
 		inserted = true
-		if reflect.DeepEqual(container, desired) {
+		merged := mergeManagedContainer(container, desired)
+		if reflect.DeepEqual(container, merged) {
 			containers = append(containers, container)
 			continue
 		}
 
-		containers = append(containers, desired)
+		containers = append(containers, merged)
 		changed = true
 	}
 
@@ -64,4 +65,12 @@ func ApplyManagedPodSpec(template *corev1.PodTemplateSpec, managed ManagedPodSpe
 	}
 
 	return changed
+}
+
+func mergeManagedContainer(existing, desired corev1.Container) corev1.Container {
+	merged := existing
+	merged.Image = desired.Image
+	merged.Env = desired.Env
+
+	return merged
 }
