@@ -1,7 +1,5 @@
 package containeragent
 
-import "fmt"
-
 const (
 	defaultImage            = "ghcr.io/mackerelio/mackerel-container-agent:plugins"
 	defaultAPIKeySecretName = "mackerel-api-key"
@@ -22,10 +20,6 @@ func ResolveConfig(input SourceInput) (Config, error) {
 	}
 
 	cfg.Image = defaultString(cfg.Image, defaultImage)
-
-	if cfg.APIKeySecretKey != "" && cfg.APIKeySecretName == "" {
-		return Config{}, fmt.Errorf("api key secret name is required when api key secret key is set")
-	}
 
 	if cfg.APIKeySecretName == "" {
 		cfg.APIKeySecretName = defaultAPIKeySecretName

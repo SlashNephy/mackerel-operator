@@ -91,13 +91,19 @@ func TestResolveConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "rejects missing secret name when key override is set",
+			name: "applies default secret name for key override",
 			input: SourceInput{
 				Target:          TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
 				Enabled:         true,
 				APIKeySecretKey: "custom",
 			},
-			wantErr: "api key secret name",
+			want: Config{
+				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
+				Enabled:          true,
+				Image:            defaultImage,
+				APIKeySecretName: defaultAPIKeySecretName,
+				APIKeySecretKey:  "custom",
+			},
 		},
 	}
 
