@@ -79,7 +79,7 @@ helm install mackerel-operator mackerel-operator/mackerel-operator \
   --namespace mackerel-operator-system \
   --create-namespace \
   --set image.repository=ghcr.io/slashnephy/mackerel-operator \
-  --set image.tag=0.1.1
+  --set image.tag=0.1.2
 ```
 
 The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds/`.
