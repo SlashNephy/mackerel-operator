@@ -57,8 +57,8 @@ func TestMergeMackerelExternalMonitorPreservesUnsupportedFields(t *testing.T) {
 	if got.MaxCheckAttempts != 5 {
 		t.Fatalf("MaxCheckAttempts = %d, want 5", got.MaxCheckAttempts)
 	}
-	if got.ResponseTimeDuration == nil || *got.ResponseTimeDuration != responseTimeDuration {
-		t.Fatalf("ResponseTimeDuration = %v, want %d", got.ResponseTimeDuration, responseTimeDuration)
+	if got.ResponseTimeDuration != nil {
+		t.Fatalf("ResponseTimeDuration = %v, want nil", got.ResponseTimeDuration)
 	}
 	if got.RequestBody != "payload" {
 		t.Fatalf("RequestBody = %q, want payload", got.RequestBody)
@@ -81,6 +81,24 @@ func TestMergeMackerelExternalMonitorPreservesUnsupportedFields(t *testing.T) {
 	}
 	if got.NotificationInterval != uint64(interval) {
 		t.Fatalf("NotificationInterval = %d, want %d", got.NotificationInterval, interval)
+	}
+}
+
+func TestMergeMackerelExternalMonitorAppliesResponseTimeDuration(t *testing.T) {
+	duration := 5
+	desired := monitor.DesiredExternalMonitor{
+		Name:                 "API health",
+		URL:                  "https://api.example.com/healthz",
+		Method:               "GET",
+		ResponseTimeDuration: &duration,
+	}
+
+	got, err := mergeMackerelExternalMonitor(&mackerel.MonitorExternalHTTP{}, desired, "")
+	if err != nil {
+		t.Fatalf("mergeMackerelExternalMonitor returned error: %v", err)
+	}
+	if got.ResponseTimeDuration == nil || *got.ResponseTimeDuration != uint64(duration) {
+		t.Fatalf("ResponseTimeDuration = %v, want %d", got.ResponseTimeDuration, duration)
 	}
 }
 

@@ -124,6 +124,7 @@ func actualExternalMonitorFromMackerel(m *mackerel.MonitorExternalHTTP) monitor.
 		NotificationInterval:            intPtrFromUint64(m.NotificationInterval),
 		ExpectedStatusCode:              m.ExpectedStatusCode,
 		ContainsString:                  m.ContainsString,
+		ResponseTimeDuration:            intPtrFromUint64Ptr(m.ResponseTimeDuration),
 		ResponseTimeWarning:             intPtrFromFloat64(m.ResponseTimeWarning),
 		ResponseTimeCritical:            intPtrFromFloat64(m.ResponseTimeCritical),
 		CertificationExpirationWarning:  intPtrFromUint64Ptr(m.CertificationExpirationWarning),
@@ -151,6 +152,10 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	if err != nil {
 		return nil, err
 	}
+	responseTimeDuration, err := uint64PtrFromIntPtr(desired.ResponseTimeDuration)
+	if err != nil {
+		return nil, err
+	}
 	certificationExpirationWarning, err := uint64PtrFromIntPtr(desired.CertificationExpirationWarning)
 	if err != nil {
 		return nil, err
@@ -168,6 +173,7 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	merged.Method = desired.Method
 	merged.URL = desired.URL
 	merged.Service = desired.Service
+	merged.ResponseTimeDuration = responseTimeDuration
 	merged.ResponseTimeWarning = responseTimeWarning
 	merged.ResponseTimeCritical = responseTimeCritical
 	merged.ContainsString = desired.ContainsString

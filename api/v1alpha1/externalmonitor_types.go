@@ -24,6 +24,8 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // ExternalMonitorSpec defines the desired state of ExternalMonitor
+// +kubebuilder:validation:XValidation:rule="!has(self.responseTimeWarning) || has(self.responseTimeDuration)",message="responseTimeDuration is required when responseTimeWarning is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.responseTimeCritical) || has(self.responseTimeDuration)",message="responseTimeDuration is required when responseTimeCritical is set"
 type ExternalMonitorSpec struct {
 	Name    string `json:"name,omitempty"`
 	Service string `json:"service,omitempty"`
@@ -39,6 +41,8 @@ type ExternalMonitorSpec struct {
 	// +kubebuilder:validation:Maximum=599
 	ExpectedStatusCode *int   `json:"expectedStatusCode,omitempty"`
 	ContainsString     string `json:"containsString,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	ResponseTimeDuration *int `json:"responseTimeDuration,omitempty"`
 	// +kubebuilder:validation:Minimum=0
 	ResponseTimeWarning *int `json:"responseTimeWarning,omitempty"`
 	// +kubebuilder:validation:Minimum=0

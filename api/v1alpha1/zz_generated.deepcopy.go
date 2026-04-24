@@ -97,6 +97,11 @@ func (in *ExternalMonitorSpec) DeepCopyInto(out *ExternalMonitorSpec) {
 		*out = new(int)
 		**out = **in
 	}
+	if in.ResponseTimeDuration != nil {
+		in, out := &in.ResponseTimeDuration, &out.ResponseTimeDuration
+		*out = new(int)
+		**out = **in
+	}
 	if in.ResponseTimeWarning != nil {
 		in, out := &in.ResponseTimeWarning, &out.ResponseTimeWarning
 		*out = new(int)

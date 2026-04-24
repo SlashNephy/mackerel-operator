@@ -83,6 +83,9 @@ spec:
               responseTimeCritical:
                 minimum: 0
                 type: integer
+              responseTimeDuration:
+                minimum: 1
+                type: integer
               responseTimeWarning:
                 minimum: 0
                 type: integer
@@ -94,6 +97,13 @@ spec:
             required:
             - url
             type: object
+            x-kubernetes-validations:
+            - message: responseTimeDuration is required when responseTimeWarning is
+                set
+              rule: '!has(self.responseTimeWarning) || has(self.responseTimeDuration)'
+            - message: responseTimeDuration is required when responseTimeCritical
+                is set
+              rule: '!has(self.responseTimeCritical) || has(self.responseTimeDuration)'
           status:
             description: status defines the observed state of ExternalMonitor
             properties:

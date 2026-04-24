@@ -78,6 +78,7 @@ func actualMatchesDesired(desired monitor.DesiredExternalMonitor, actual monitor
 		reflect.DeepEqual(desired.NotificationInterval, actual.NotificationInterval) &&
 		reflect.DeepEqual(desired.ExpectedStatusCode, actual.ExpectedStatusCode) &&
 		desired.ContainsString == actual.ContainsString &&
+		reflect.DeepEqual(desired.ResponseTimeDuration, actual.ResponseTimeDuration) &&
 		reflect.DeepEqual(desired.ResponseTimeWarning, actual.ResponseTimeWarning) &&
 		reflect.DeepEqual(desired.ResponseTimeCritical, actual.ResponseTimeCritical) &&
 		reflect.DeepEqual(desired.CertificationExpirationWarning, actual.CertificationExpirationWarning) &&

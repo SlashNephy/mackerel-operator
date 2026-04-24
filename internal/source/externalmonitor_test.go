@@ -15,6 +15,7 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 	expectedStatus := 200
 	responseTimeWarning := 30
 	responseTimeCritical := 60
+	responseTimeDuration := 5
 	certificationWarning := 15
 	certificationCritical := 5
 	containsString := "ok"
@@ -33,6 +34,7 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 			ContainsString:                  containsString,
 			ResponseTimeWarning:             &responseTimeWarning,
 			ResponseTimeCritical:            &responseTimeCritical,
+			ResponseTimeDuration:            &responseTimeDuration,
 			CertificationExpirationWarning:  &certificationWarning,
 			CertificationExpirationCritical: &certificationCritical,
 			Memo:                            "human memo",
@@ -70,6 +72,9 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 	}
 	if got.ResponseTimeCritical == nil || *got.ResponseTimeCritical != responseTimeCritical {
 		t.Fatalf("ResponseTimeCritical = %v, want %d", got.ResponseTimeCritical, responseTimeCritical)
+	}
+	if got.ResponseTimeDuration == nil || *got.ResponseTimeDuration != responseTimeDuration {
+		t.Fatalf("ResponseTimeDuration = %v, want %d", got.ResponseTimeDuration, responseTimeDuration)
 	}
 	if got.CertificationExpirationWarning == nil || *got.CertificationExpirationWarning != certificationWarning {
 		t.Fatalf("CertificationExpirationWarning = %v, want %d", got.CertificationExpirationWarning, certificationWarning)

@@ -8,6 +8,7 @@ type DesiredExternalMonitor struct {
 	NotificationInterval            *int   `json:"notificationInterval,omitempty"`
 	ExpectedStatusCode              *int   `json:"expectedStatusCode,omitempty"`
 	ContainsString                  string `json:"containsString,omitempty"`
+	ResponseTimeDuration            *int   `json:"responseTimeDuration,omitempty"`
 	ResponseTimeWarning             *int   `json:"responseTimeWarning,omitempty"`
 	ResponseTimeCritical            *int   `json:"responseTimeCritical,omitempty"`
 	CertificationExpirationWarning  *int   `json:"certificationExpirationWarning,omitempty"`
@@ -27,6 +28,7 @@ type ActualExternalMonitor struct {
 	NotificationInterval            *int
 	ExpectedStatusCode              *int
 	ContainsString                  string
+	ResponseTimeDuration            *int
 	ResponseTimeWarning             *int
 	ResponseTimeCritical            *int
 	CertificationExpirationWarning  *int

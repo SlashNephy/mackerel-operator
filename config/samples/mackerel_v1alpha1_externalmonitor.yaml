@@ -13,6 +13,7 @@ spec:
   notificationInterval: 10
   expectedStatusCode: 200
   containsString: ok
+  responseTimeDuration: 5
   responseTimeWarning: 3000
   responseTimeCritical: 5000
   certificationExpirationWarning: 30

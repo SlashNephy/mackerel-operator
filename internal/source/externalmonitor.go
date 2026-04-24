@@ -38,6 +38,7 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 		NotificationInterval:            cr.Spec.NotificationInterval,
 		ExpectedStatusCode:              cr.Spec.ExpectedStatusCode,
 		ContainsString:                  cr.Spec.ContainsString,
+		ResponseTimeDuration:            cr.Spec.ResponseTimeDuration,
 		ResponseTimeWarning:             cr.Spec.ResponseTimeWarning,
 		ResponseTimeCritical:            cr.Spec.ResponseTimeCritical,
 		CertificationExpirationWarning:  cr.Spec.CertificationExpirationWarning,
