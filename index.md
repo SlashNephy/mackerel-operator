@@ -21,7 +21,8 @@ apiVersion: mackerel.starry.blue/v1alpha1
 kind: ExternalMonitor
 metadata:
   name: api-health
-  namespace: default
+  namespace: app
+
 spec:
   name: API health check
   service: my-service
@@ -30,11 +31,12 @@ spec:
   notificationInterval: 10
   expectedStatusCode: 200
   containsString: ok
+  responseTimeDuration: 5
   responseTimeWarning: 3000
   responseTimeCritical: 5000
   certificationExpirationWarning: 30
   certificationExpirationCritical: 14
-  memo: Managed by Kubernetes
+  memo: Check the connection to the API.
 ```
 
 ## Development
@@ -77,7 +79,7 @@ helm install mackerel-operator mackerel-operator/mackerel-operator \
   --namespace mackerel-operator-system \
   --create-namespace \
   --set image.repository=ghcr.io/slashnephy/mackerel-operator \
-  --set image.tag=0.1.1
+  --set image.tag=0.1.2
 ```
 
 The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds/`.
