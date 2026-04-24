@@ -46,7 +46,6 @@ func TestResolveConfig(t *testing.T) {
 				Image:            "example.com/agent:latest",
 				APIKeySecretName: "custom-secret",
 				APIKeySecretKey:  "custom-key",
-				ConfigSecretName: "agent-config",
 			},
 		},
 		{
@@ -76,7 +75,7 @@ func TestResolveConfig(t *testing.T) {
 			},
 		},
 		{
-			name: "preserves image override and config secret name",
+			name: "preserves image override and drops config secret name from resolved config",
 			input: SourceInput{
 				Target:           TargetRef{Kind: "Deployment", Namespace: "app", Name: "api"},
 				Enabled:          true,
@@ -89,7 +88,6 @@ func TestResolveConfig(t *testing.T) {
 				Image:            "example.com/agent:latest",
 				APIKeySecretName: defaultAPIKeySecretName,
 				APIKeySecretKey:  defaultAPIKeySecretKey,
-				ConfigSecretName: "agent-config",
 			},
 		},
 		{

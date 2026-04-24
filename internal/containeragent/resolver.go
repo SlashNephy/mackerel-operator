@@ -15,7 +15,6 @@ func ResolveConfig(input SourceInput) (Config, error) {
 		Image:            input.Image,
 		APIKeySecretName: input.APIKeySecretName,
 		APIKeySecretKey:  input.APIKeySecretKey,
-		ConfigSecretName: input.ConfigSecretName,
 	}
 
 	if !cfg.Enabled {
