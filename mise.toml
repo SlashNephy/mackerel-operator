@@ -1,4 +1,4 @@
 [tools]
 go = "1.26.2"
 helm = "4.1.4"
-kubebuilder = "4.13.1"
+kubebuilder = "4.14.0"
