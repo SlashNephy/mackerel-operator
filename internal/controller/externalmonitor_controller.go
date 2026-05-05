@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"time"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -94,7 +96,7 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	desired, err := r.externalMonitorSource().FromExternalMonitor(cr)
 	if err != nil {
 		operatorstatus.MarkInvalidSpec(cr, err.Error())
-		return ctrl.Result{}, r.Status().Update(ctx, cr)
+		return r.updateStatus(ctx, req.NamespacedName, cr)
 	}
 
 	if !controllerutil.ContainsFinalizer(cr, externalMonitorFinalizer) {
@@ -107,7 +109,7 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	actual, err := r.findActual(ctx, cr.Status.MonitorID, desired)
 	if err != nil {
 		operatorstatus.MarkError(cr, "ProviderError", err.Error())
-		if statusErr := r.Status().Update(ctx, cr); statusErr != nil {
+		if _, statusErr := r.updateStatus(ctx, req.NamespacedName, cr); statusErr != nil {
 			return ctrl.Result{}, errors.Join(err, statusErr)
 		}
 		return ctrl.Result{}, err
@@ -146,14 +148,14 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		synced = actual
 	case planner.ActionOwnershipLost:
 		operatorstatus.MarkOwnershipLost(cr, decision.Reason)
-		return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.Status().Update(ctx, cr)
+		return r.updateStatus(ctx, req.NamespacedName, cr)
 	default:
 		return ctrl.Result{}, fmt.Errorf("unsupported planner action: %s", decision.Action)
 	}
 
 	if err != nil {
 		operatorstatus.MarkError(cr, "ProviderError", err.Error())
-		if statusErr := r.Status().Update(ctx, cr); statusErr != nil {
+		if _, statusErr := r.updateStatus(ctx, req.NamespacedName, cr); statusErr != nil {
 			return ctrl.Result{}, errors.Join(err, statusErr)
 		}
 		if errors.Is(err, provider.ErrRateLimited) {
@@ -171,7 +173,25 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		URL:       synced.URL,
 		Name:      synced.Name,
 	})
-	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.Status().Update(ctx, cr)
+	return r.updateStatus(ctx, req.NamespacedName, cr)
+}
+
+
+func (r *ExternalMonitorReconciler) updateStatus(ctx context.Context, key types.NamespacedName, desiredStatus *mackerelv1alpha1.ExternalMonitor) (ctrl.Result, error) {
+	latest := &mackerelv1alpha1.ExternalMonitor{}
+	if err := r.Get(ctx, key, latest); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	latest.Status = desiredStatus.Status
+	if err := r.Status().Update(ctx, latest); err != nil {
+		if apierrors.IsConflict(err) {
+			return ctrl.Result{RequeueAfter: defaultRequeueAfter}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
