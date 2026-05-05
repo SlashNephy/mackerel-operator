@@ -115,7 +115,7 @@ func externalMonitorFromMackerel(m mackerel.Monitor) (*monitor.ActualExternalMon
 }
 
 func actualExternalMonitorFromMackerel(m *mackerel.MonitorExternalHTTP) monitor.ActualExternalMonitor {
-	return monitor.ActualExternalMonitor{
+	actual := monitor.ActualExternalMonitor{
 		ID:                              m.ID,
 		Name:                            m.Name,
 		Service:                         m.Service,
@@ -123,7 +123,11 @@ func actualExternalMonitorFromMackerel(m *mackerel.MonitorExternalHTTP) monitor.
 		Method:                          m.Method,
 		NotificationInterval:            intPtrFromUint64(m.NotificationInterval),
 		ExpectedStatusCode:              m.ExpectedStatusCode,
+		SkipCertificateVerification:     m.SkipCertificateVerification,
+		FollowRedirect:                  m.FollowRedirect,
+		RequestBody:                     m.RequestBody,
 		ContainsString:                  m.ContainsString,
+		MaxCheckAttempts:                intPtrFromUint64(m.MaxCheckAttempts),
 		ResponseTimeDuration:            intPtrFromUint64Ptr(m.ResponseTimeDuration),
 		ResponseTimeWarning:             intPtrFromFloat64(m.ResponseTimeWarning),
 		ResponseTimeCritical:            intPtrFromFloat64(m.ResponseTimeCritical),
@@ -131,6 +135,11 @@ func actualExternalMonitorFromMackerel(m *mackerel.MonitorExternalHTTP) monitor.
 		CertificationExpirationCritical: intPtrFromUint64Ptr(m.CertificationExpirationCritical),
 		Memo:                            m.Memo,
 	}
+	actual.Headers = make([]monitor.ExternalMonitorHeader, 0, len(m.Headers))
+	for _, h := range m.Headers {
+		actual.Headers = append(actual.Headers, monitor.ExternalMonitorHeader{Name: h.Name, Value: h.Value})
+	}
+	return actual
 }
 
 func newMackerelExternalMonitor(desired monitor.DesiredExternalMonitor, memo string) (*mackerel.MonitorExternalHTTP, error) {
@@ -164,6 +173,10 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	if err != nil {
 		return nil, err
 	}
+	maxCheckAttempts, err := uint64FromIntPtr(desired.MaxCheckAttempts)
+	if err != nil {
+		return nil, err
+	}
 
 	merged := *base
 	merged.Type = "external"
@@ -180,6 +193,15 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	merged.CertificationExpirationWarning = certificationExpirationWarning
 	merged.CertificationExpirationCritical = certificationExpirationCritical
 	merged.ExpectedStatusCode = desired.ExpectedStatusCode
+	merged.SkipCertificateVerification = desired.SkipCertificateVerification
+	merged.FollowRedirect = desired.FollowRedirect
+	merged.RequestBody = desired.RequestBody
+	merged.MaxCheckAttempts = maxCheckAttempts
+	headers := make([]mackerel.HeaderField, 0, len(desired.Headers))
+	for _, h := range desired.Headers {
+		headers = append(headers, mackerel.HeaderField{Name: h.Name, Value: h.Value})
+	}
+	merged.Headers = headers
 
 	return &merged, nil
 }

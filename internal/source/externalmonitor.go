@@ -30,6 +30,11 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 		method = "GET"
 	}
 
+	headers := make([]monitor.ExternalMonitorHeader, 0, len(cr.Spec.Headers))
+	for _, h := range cr.Spec.Headers {
+		headers = append(headers, monitor.ExternalMonitorHeader{Name: h.Name, Value: h.Value})
+	}
+
 	desired := monitor.DesiredExternalMonitor{
 		Name:                            name,
 		Service:                         cr.Spec.Service,
@@ -37,7 +42,12 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 		Method:                          method,
 		NotificationInterval:            cr.Spec.NotificationInterval,
 		ExpectedStatusCode:              cr.Spec.ExpectedStatusCode,
+		SkipCertificateVerification:     cr.Spec.SkipCertificateVerification,
+		FollowRedirect:                  cr.Spec.FollowRedirect,
+		Headers:                         headers,
+		RequestBody:                     cr.Spec.RequestBody,
 		ContainsString:                  cr.Spec.ContainsString,
+		MaxCheckAttempts:                cr.Spec.MaxCheckAttempts,
 		ResponseTimeDuration:            cr.Spec.ResponseTimeDuration,
 		ResponseTimeWarning:             cr.Spec.ResponseTimeWarning,
 		ResponseTimeCritical:            cr.Spec.ResponseTimeCritical,

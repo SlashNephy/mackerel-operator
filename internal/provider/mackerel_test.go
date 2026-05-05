@@ -8,7 +8,7 @@ import (
 	mackerel "github.com/mackerelio/mackerel-client-go"
 )
 
-func TestMergeMackerelExternalMonitorPreservesUnsupportedFields(t *testing.T) {
+func TestMergeMackerelExternalMonitorAppliesAllExternalFields(t *testing.T) {
 	responseTimeDuration := uint64(3)
 	base := &mackerel.MonitorExternalHTTP{
 		ID:                          "mon-1",
@@ -29,6 +29,7 @@ func TestMergeMackerelExternalMonitorPreservesUnsupportedFields(t *testing.T) {
 	critical := 2000
 	certWarning := 30
 	certCritical := 14
+	maxCheckAttempts := 2
 	desired := monitor.DesiredExternalMonitor{
 		Name:                            "API health",
 		Service:                         "my-service",
@@ -41,6 +42,13 @@ func TestMergeMackerelExternalMonitorPreservesUnsupportedFields(t *testing.T) {
 		ResponseTimeCritical:            &critical,
 		CertificationExpirationWarning:  &certWarning,
 		CertificationExpirationCritical: &certCritical,
+		SkipCertificateVerification:     false,
+		FollowRedirect:                  false,
+		RequestBody:                     "updated payload",
+		MaxCheckAttempts:                &maxCheckAttempts,
+		Headers: []monitor.ExternalMonitorHeader{
+			{Name: "Cache-Control", Value: "no-cache"},
+		},
 	}
 
 	got, err := mergeMackerelExternalMonitor(base, desired, "human memo")
@@ -54,23 +62,23 @@ func TestMergeMackerelExternalMonitorPreservesUnsupportedFields(t *testing.T) {
 	if !got.IsMute {
 		t.Fatal("IsMute = false, want true")
 	}
-	if got.MaxCheckAttempts != 5 {
-		t.Fatalf("MaxCheckAttempts = %d, want 5", got.MaxCheckAttempts)
+	if got.MaxCheckAttempts != uint64(maxCheckAttempts) {
+		t.Fatalf("MaxCheckAttempts = %d, want %d", got.MaxCheckAttempts, maxCheckAttempts)
 	}
 	if got.ResponseTimeDuration != nil {
 		t.Fatalf("ResponseTimeDuration = %v, want nil", got.ResponseTimeDuration)
 	}
-	if got.RequestBody != "payload" {
-		t.Fatalf("RequestBody = %q, want payload", got.RequestBody)
+	if got.RequestBody != "updated payload" {
+		t.Fatalf("RequestBody = %q, want updated payload", got.RequestBody)
 	}
-	if !got.SkipCertificateVerification {
-		t.Fatal("SkipCertificateVerification = false, want true")
+	if got.SkipCertificateVerification {
+		t.Fatal("SkipCertificateVerification = true, want false")
 	}
-	if !got.FollowRedirect {
-		t.Fatal("FollowRedirect = false, want true")
+	if got.FollowRedirect {
+		t.Fatal("FollowRedirect = true, want false")
 	}
-	if len(got.Headers) != 1 || got.Headers[0].Name != "Authorization" || got.Headers[0].Value != "Bearer token" {
-		t.Fatalf("Headers = %#v, want preserved Authorization header", got.Headers)
+	if len(got.Headers) != 1 || got.Headers[0].Name != "Cache-Control" || got.Headers[0].Value != "no-cache" {
+		t.Fatalf("Headers = %#v, want applied Cache-Control header", got.Headers)
 	}
 
 	if got.Name != desired.Name || got.Service != desired.Service || got.URL != desired.URL || got.Method != desired.Method {

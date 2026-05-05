@@ -26,6 +26,14 @@ import (
 // ExternalMonitorSpec defines the desired state of ExternalMonitor
 // +kubebuilder:validation:XValidation:rule="!has(self.responseTimeWarning) || has(self.responseTimeDuration)",message="responseTimeDuration is required when responseTimeWarning is set"
 // +kubebuilder:validation:XValidation:rule="!has(self.responseTimeCritical) || has(self.responseTimeDuration)",message="responseTimeDuration is required when responseTimeCritical is set"
+type ExternalMonitorHeader struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// ExternalMonitorSpec defines the desired state of ExternalMonitor
+// +kubebuilder:validation:XValidation:rule="!has(self.responseTimeWarning) || has(self.responseTimeDuration)",message="responseTimeDuration is required when responseTimeWarning is set"
+// +kubebuilder:validation:XValidation:rule="!has(self.responseTimeCritical) || has(self.responseTimeDuration)",message="responseTimeDuration is required when responseTimeCritical is set"
 type ExternalMonitorSpec struct {
 	Name    string `json:"name,omitempty"`
 	Service string `json:"service,omitempty"`
@@ -39,8 +47,15 @@ type ExternalMonitorSpec struct {
 	NotificationInterval *int `json:"notificationInterval,omitempty"`
 	// +kubebuilder:validation:Minimum=100
 	// +kubebuilder:validation:Maximum=599
-	ExpectedStatusCode *int   `json:"expectedStatusCode,omitempty"`
-	ContainsString     string `json:"containsString,omitempty"`
+	ExpectedStatusCode          *int                    `json:"expectedStatusCode,omitempty"`
+	SkipCertificateVerification bool                    `json:"skipCertificateVerification,omitempty"`
+	FollowRedirect              bool                    `json:"followRedirect,omitempty"`
+	Headers                     []ExternalMonitorHeader `json:"headers,omitempty"`
+	RequestBody                 string                  `json:"requestBody,omitempty"`
+	ContainsString              string                  `json:"containsString,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
+	MaxCheckAttempts *int `json:"maxCheckAttempts,omitempty"`
 	// +kubebuilder:validation:Minimum=1
 	ResponseTimeDuration *int `json:"responseTimeDuration,omitempty"`
 	// +kubebuilder:validation:Minimum=0

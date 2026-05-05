@@ -19,6 +19,7 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 	certificationWarning := 15
 	certificationCritical := 5
 	containsString := "ok"
+	maxCheckAttempts := 3
 	cr := &mackerelv1alpha1.ExternalMonitor{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "default",
@@ -37,7 +38,12 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 			ResponseTimeDuration:            &responseTimeDuration,
 			CertificationExpirationWarning:  &certificationWarning,
 			CertificationExpirationCritical: &certificationCritical,
+			SkipCertificateVerification:     true,
+			FollowRedirect:                  true,
+			Headers:                         []mackerelv1alpha1.ExternalMonitorHeader{{Name: "Authorization", Value: "Bearer token"}},
+			RequestBody:                     "{\"ping\":\"pong\"}",
 			Memo:                            "human memo",
+			MaxCheckAttempts:                &maxCheckAttempts,
 		},
 	}
 
@@ -66,6 +72,21 @@ func TestExternalMonitorSourceBuildsDesiredMonitor(t *testing.T) {
 	}
 	if got.ContainsString != containsString {
 		t.Fatalf("ContainsString = %q, want %q", got.ContainsString, containsString)
+	}
+	if !got.SkipCertificateVerification {
+		t.Fatal("SkipCertificateVerification = false, want true")
+	}
+	if !got.FollowRedirect {
+		t.Fatal("FollowRedirect = false, want true")
+	}
+	if got.RequestBody != "{\"ping\":\"pong\"}" {
+		t.Fatalf("RequestBody = %q", got.RequestBody)
+	}
+	if got.MaxCheckAttempts == nil || *got.MaxCheckAttempts != maxCheckAttempts {
+		t.Fatalf("MaxCheckAttempts = %v, want %d", got.MaxCheckAttempts, maxCheckAttempts)
+	}
+	if len(got.Headers) != 1 || got.Headers[0].Name != "Authorization" || got.Headers[0].Value != "Bearer token" {
+		t.Fatalf("Headers = %#v", got.Headers)
 	}
 	if got.ResponseTimeWarning == nil || *got.ResponseTimeWarning != responseTimeWarning {
 		t.Fatalf("ResponseTimeWarning = %v, want %d", got.ResponseTimeWarning, responseTimeWarning)
