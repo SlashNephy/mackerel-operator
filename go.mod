@@ -5,7 +5,7 @@ go 1.26.2
 require (
 	github.com/mackerelio/mackerel-client-go v0.43.0
 	github.com/onsi/ginkgo/v2 v2.31.0
-	github.com/onsi/gomega v1.41.0
+	github.com/onsi/gomega v1.42.0
 	github.com/stretchr/testify v1.11.1
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
