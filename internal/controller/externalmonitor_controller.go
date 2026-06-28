@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/retry"
 
 	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
 	"github.com/SlashNephy/mackerel-operator/internal/monitor"
@@ -99,9 +100,12 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	if !controllerutil.ContainsFinalizer(cr, externalMonitorFinalizer) {
 		controllerutil.AddFinalizer(cr, externalMonitorFinalizer)
-		if err := r.Update(ctx, cr); err != nil {
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			return r.Update(ctx, cr)
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{}, nil
 	}
 
 	actual, err := r.findActual(ctx, cr.Status.MonitorID, desired)
@@ -171,7 +175,12 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		URL:       synced.URL,
 		Name:      synced.Name,
 	})
-	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.Status().Update(ctx, cr)
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		return r.Status().Update(ctx, cr)
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
