@@ -99,8 +99,11 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	if !controllerutil.ContainsFinalizer(cr, externalMonitorFinalizer) {
-		controllerutil.AddFinalizer(cr, externalMonitorFinalizer)
 		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			if err := r.Get(ctx, req.NamespacedName, cr); err != nil {
+				return err
+			}
+			controllerutil.AddFinalizer(cr, externalMonitorFinalizer)
 			return r.Update(ctx, cr)
 		}); err != nil {
 			return ctrl.Result{}, err
@@ -176,6 +179,15 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Name:      synced.Name,
 	})
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.Get(ctx, req.NamespacedName, cr); err != nil {
+			return err
+		}
+		operatorstatus.MarkReady(cr, operatorstatus.SyncResult{
+			MonitorID: synced.ID,
+			Hash:      desired.Hash,
+			URL:       synced.URL,
+			Name:      synced.Name,
+		})
 		return r.Status().Update(ctx, cr)
 	}); err != nil {
 		return ctrl.Result{}, err
