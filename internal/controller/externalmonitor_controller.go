@@ -28,7 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
-	"sigs.k8s.io/controller-runtime/pkg/retry"
+	"k8s.io/client-go/util/retry"
 
 	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
 	"github.com/SlashNephy/mackerel-operator/internal/monitor"
@@ -180,6 +180,10 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	})
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := r.Get(ctx, req.NamespacedName, cr); err != nil {
+			return err
+		}
+		desired, err := r.externalMonitorSource().FromExternalMonitor(cr)
+		if err != nil {
 			return err
 		}
 		operatorstatus.MarkReady(cr, operatorstatus.SyncResult{
