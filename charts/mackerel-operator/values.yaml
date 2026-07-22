@@ -3,7 +3,7 @@ replicaCount: 1
 image:
   repository: ghcr.io/slashnephy/mackerel-operator
   pullPolicy: IfNotPresent
-  tag: "@sha256:3c1dc8687e42a51b7533fb3bd6218e0a222fd5c348ac3400332c3fb6daa1e666"
+  tag: "@sha256:ddf978cd448ef6464c8a6e9cbfc2a2772fac9dbfd10623510dba341d4eee7512"
 
 imagePullSecrets: []
 nameOverride: ""
