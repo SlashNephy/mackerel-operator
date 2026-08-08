@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -126,22 +127,26 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	var synced *monitor.ActualExternalMonitor
+	var applied bool
 	switch decision.Action {
 	case planner.ActionCreate:
 		memo := ownership.ApplyMarker(desired.Memo, marker)
 		synced, err = r.Provider.CreateExternalMonitor(ctx, desired, memo)
+		applied = true
 	case planner.ActionUpdate:
 		if actual == nil {
 			return ctrl.Result{}, fmt.Errorf("planner selected update without actual monitor")
 		}
 		memo := ownership.ApplyMarker(actual.Memo, marker)
 		synced, err = r.Provider.UpdateExternalMonitor(ctx, actual.ID, desired, memo)
+		applied = true
 	case planner.ActionRestoreMarker:
 		if actual == nil {
 			return ctrl.Result{}, fmt.Errorf("planner selected marker restore without actual monitor")
 		}
 		memo := ownership.ApplyMarker(actual.Memo, marker)
 		synced, err = r.Provider.UpdateExternalMonitor(ctx, actual.ID, desired, memo)
+		applied = true
 	case planner.ActionNoop:
 		synced = actual
 	case planner.ActionOwnershipLost:
@@ -173,6 +178,7 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			Hash:      desired.Hash,
 			URL:       synced.URL,
 			Name:      synced.Name,
+			Applied:   applied,
 		})
 	})
 }
@@ -181,9 +187,17 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 // merge patch. Unlike Update, a merge patch carries no resourceVersion precondition,
 // so a spec change landing while the provider call is in flight does not turn into a
 // conflict error.
+//
+// Reconcile runs on a timer, so most invocations find nothing to change. Skipping the
+// API call in that case keeps a steady-state resource from being rewritten once per
+// resync interval.
 func (r *ExternalMonitorReconciler) patchStatus(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor, mark func()) error {
-	patch := client.MergeFrom(cr.DeepCopy())
+	before := cr.DeepCopy()
+	patch := client.MergeFrom(before)
 	mark()
+	if apiequality.Semantic.DeepEqual(before.Status, cr.Status) {
+		return nil
+	}
 	return r.Status().Patch(ctx, cr, patch)
 }
 
