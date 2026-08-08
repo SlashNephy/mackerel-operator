@@ -64,6 +64,44 @@ spec:
                 maximum: 599
                 minimum: 100
                 type: integer
+              followRedirect:
+                default: false
+                type: boolean
+              headers:
+                items:
+                  description: HeaderField is an HTTP request header sent by the external
+                    monitor.
+                  properties:
+                    name:
+                      description: |-
+                        name is the header name. The character set is the RFC 7230 token set
+                        minus the backtick, which no real header name uses and which would
+                        otherwise force the pattern out of a raw string literal.
+                      maxLength: 256
+                      minLength: 1
+                      pattern: ^[A-Za-z0-9!#$%&'*+.^_|~-]+$
+                      type: string
+                    value:
+                      description: |-
+                        value is the header value sent verbatim. It is stored in plain text in
+                        the cluster, so avoid credentials until Secret references are supported.
+                      type: string
+                  required:
+                  - name
+                  - value
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - name
+                x-kubernetes-list-type: map
+              isMute:
+                default: false
+                type: boolean
+              maxCheckAttempts:
+                default: 1
+                maximum: 10
+                minimum: 1
+                type: integer
               memo:
                 maxLength: 1900
                 type: string
@@ -80,6 +118,8 @@ spec:
               notificationInterval:
                 minimum: 10
                 type: integer
+              requestBody:
+                type: string
               responseTimeCritical:
                 minimum: 0
                 type: integer
@@ -91,6 +131,9 @@ spec:
                 type: integer
               service:
                 type: string
+              skipCertificateVerification:
+                default: false
+                type: boolean
               url:
                 pattern: ^https?://.+
                 type: string
