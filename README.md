@@ -36,8 +36,20 @@ spec:
   responseTimeCritical: 5000
   certificationExpirationWarning: 30
   certificationExpirationCritical: 14
+  isMute: false
+  followRedirect: true
+  skipCertificateVerification: false
+  maxCheckAttempts: 3
+  requestBody: ""
+  headers:
+    - name: X-Request-Source
+      value: mackerel-operator
   memo: Check the connection to the API.
 ```
+
+Header values are stored in plain text in the cluster and are returned unmasked
+by the Mackerel API. Avoid putting credentials in `headers` until Secret
+references are supported.
 
 ## Development
 

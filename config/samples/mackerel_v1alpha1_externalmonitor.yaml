@@ -18,4 +18,12 @@ spec:
   responseTimeCritical: 5000
   certificationExpirationWarning: 30
   certificationExpirationCritical: 14
+  isMute: false
+  followRedirect: true
+  skipCertificateVerification: false
+  maxCheckAttempts: 3
+  requestBody: ""
+  headers:
+    - name: X-Request-Source
+      value: mackerel-operator
   memo: Managed by Kubernetes
