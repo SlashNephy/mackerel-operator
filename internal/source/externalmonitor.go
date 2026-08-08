@@ -35,10 +35,7 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 	// Mackerel reports 1 for monitors created without maxCheckAttempts, so an
 	// unset value has to be widened here. Leaving it at 0 would make the
 	// planner see a permanent diff and rewrite the monitor on every reconcile.
-	maxCheckAttempts := cr.Spec.MaxCheckAttempts
-	if maxCheckAttempts < 1 {
-		maxCheckAttempts = 1
-	}
+	maxCheckAttempts := max(cr.Spec.MaxCheckAttempts, 1)
 
 	desired := monitor.DesiredExternalMonitor{
 		Name:                            name,
@@ -77,13 +74,17 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 // by name. The CRD declares headers as a list-map, so order carries no meaning,
 // but Mackerel echoes back whatever order was submitted. Sorting both sides
 // keeps the planner from reporting a diff that does not exist.
+// The sort is stable because the resulting slice feeds the desired-state hash:
+// two headers sharing a name would otherwise be ordered non-deterministically,
+// flipping the hash between reconciles. The CRD's listType=map makes duplicate
+// names unreachable through the API server, so this only guards Go callers.
 func sortedHeaders(headers []mackerelv1alpha1.HeaderField) []monitor.HeaderField {
 	sorted := make([]monitor.HeaderField, 0, len(headers))
 	for _, h := range headers {
 		sorted = append(sorted, monitor.HeaderField{Name: h.Name, Value: h.Value})
 	}
 
-	slices.SortFunc(sorted, func(a, b monitor.HeaderField) int {
+	slices.SortStableFunc(sorted, func(a, b monitor.HeaderField) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 
