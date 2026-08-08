@@ -35,8 +35,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Rebuilding an already released tag would change its digest on every push to
+      # main, so only build when the chart version introduces a new tag.
+      - name: Check whether the image tag already exists
+        id: image
+        env:
+          CHART_VERSION: ${{ steps.chart.outputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          tag="ghcr.io/slashnephy/mackerel-operator:${CHART_VERSION}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "Manual run: rebuilding $tag"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          elif docker manifest inspect "$tag" > /dev/null 2>&1; then
+            echo "$tag already exists, skipping the build to keep its digest stable"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$tag does not exist yet, building it"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Extract Docker metadata
         id: meta
+        if: steps.image.outputs.exists != 'true'
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/slashnephy/mackerel-operator
@@ -46,6 +67,7 @@ jobs:
 
       - name: Build and push controller image
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        if: steps.image.outputs.exists != 'true'
         with:
           context: .
           file: ./Dockerfile
