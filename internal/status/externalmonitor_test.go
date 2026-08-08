@@ -2,6 +2,7 @@ package status
 
 import (
 	"testing"
+	"time"
 
 	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,6 +17,7 @@ func TestMarkReady(t *testing.T) {
 		Hash:      "deadbee",
 		URL:       "https://api.example.com/healthz",
 		Name:      "API health check",
+		Applied:   true,
 	})
 
 	if cr.Status.MonitorID != "mon-1" {
@@ -39,6 +41,26 @@ func TestMarkReady(t *testing.T) {
 	cond := findReadyCondition(cr)
 	if cond == nil || cond.Status != metav1.ConditionTrue || cond.Reason != ReasonSynced {
 		t.Fatalf("Ready condition = %#v", cond)
+	}
+}
+
+func TestMarkReadyKeepsLastSyncedAtWhenNothingWasApplied(t *testing.T) {
+	synced := metav1.NewTime(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{Generation: 3},
+		Status: mackerelv1alpha1.ExternalMonitorStatus{
+			LastSyncedAt: &synced,
+		},
+	}
+	MarkReady(cr, SyncResult{
+		MonitorID: "mon-1",
+		Hash:      "deadbee",
+		URL:       "https://api.example.com/healthz",
+		Name:      "API health check",
+	})
+
+	if cr.Status.LastSyncedAt == nil || !cr.Status.LastSyncedAt.Equal(&synced) {
+		t.Fatalf("LastSyncedAt = %v, want %v", cr.Status.LastSyncedAt, synced)
 	}
 }
 

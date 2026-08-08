@@ -19,13 +19,19 @@ type SyncResult struct {
 	Hash      string
 	URL       string
 	Name      string
+	// Applied reports whether this reconciliation actually wrote to Mackerel.
+	// LastSyncedAt only moves forward when it did, so a resync that finds the
+	// monitor already in sync leaves the status untouched.
+	Applied bool
 }
 
 func MarkReady(cr *mackerelv1alpha1.ExternalMonitor, result SyncResult) {
-	now := metav1.Now()
 	cr.Status.MonitorID = result.MonitorID
 	cr.Status.ObservedGeneration = cr.Generation
-	cr.Status.LastSyncedAt = &now
+	if result.Applied {
+		now := metav1.Now()
+		cr.Status.LastSyncedAt = &now
+	}
 	cr.Status.LastAppliedHash = result.Hash
 	cr.Status.URL = result.URL
 	cr.Status.MackerelMonitorName = result.Name

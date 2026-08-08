@@ -388,6 +388,53 @@ func TestExternalMonitorReconciler_ReconcileRateLimited(t *testing.T) {
 	assert.Equal(t, "ProviderError", ready.Reason)
 }
 
+func TestExternalMonitorReconciler_ReconcileSkipsStatusWriteWhenAlreadyInSync(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	scheme := newExternalMonitorTestScheme(t)
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "api-health",
+			Namespace: "default",
+		},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL: "https://example.com/healthz",
+		},
+	}
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(&mackerelv1alpha1.ExternalMonitor{}).
+		Build()
+	reconciler := &ExternalMonitorReconciler{
+		Client:     k8sClient,
+		Scheme:     scheme,
+		Provider:   newFakeExternalMonitorProvider(),
+		OwnerID:    "prod",
+		Policy:     "sync",
+		HashLength: 7,
+	}
+	request := reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "api-health", Namespace: "default"},
+	}
+
+	_, err := reconciler.Reconcile(ctx, request)
+	require.NoError(t, err)
+	created := &mackerelv1alpha1.ExternalMonitor{}
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), created))
+	require.NotNil(t, created.Status.LastSyncedAt)
+
+	// The monitor is already in sync, so the resync must not touch the resource at all.
+	_, err = reconciler.Reconcile(ctx, request)
+	require.NoError(t, err)
+
+	resynced := &mackerelv1alpha1.ExternalMonitor{}
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), resynced))
+	assert.Equal(t, created.ResourceVersion, resynced.ResourceVersion)
+	assert.Equal(t, created.Status.LastSyncedAt, resynced.Status.LastSyncedAt)
+}
+
 func TestExternalMonitorReconciler_ReconcileSurvivesConcurrentSpecUpdate(t *testing.T) {
 	t.Parallel()
 
