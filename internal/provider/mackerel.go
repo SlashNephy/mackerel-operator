@@ -287,6 +287,11 @@ func float64PtrFromIntPtr(v *int) (*float64, error) {
 }
 
 func intFromUint64(v uint64) int {
+	// This branch is physically unreachable for maxCheckAttempts: the CRD caps
+	// the value at 10 and Mackerel's own documented limit is also 10. The guard
+	// is kept to satisfy the type conversion; without it a value above math.MaxInt
+	// would wrap silently, producing 0 in the actual monitor and a permanent
+	// desired-1-vs-actual-0 Update loop.
 	if v > uint64(math.MaxInt) {
 		return 0
 	}

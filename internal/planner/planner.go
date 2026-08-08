@@ -96,13 +96,20 @@ func actualMatchesDesired(desired monitor.DesiredExternalMonitor, actual monitor
 // headersMatch compares headers as an unordered set keyed by name. Mackerel
 // preserves the submission order rather than normalising it, so comparing the
 // slices positionally would report drift for a monitor that is in sync.
+// The comparator uses a name-then-value total order. The CRD's listType=map
+// prevents duplicate names on the desired side, so the value tiebreak is
+// unreachable in practice, but a total order removes the need for the reader
+// to reconstruct that reachability argument.
 func headersMatch(desired, actual []monitor.HeaderField) bool {
 	if len(desired) != len(actual) {
 		return false
 	}
 
 	byName := func(a, b monitor.HeaderField) int {
-		return strings.Compare(a.Name, b.Name)
+		if c := strings.Compare(a.Name, b.Name); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Value, b.Value)
 	}
 
 	sortedDesired := slices.Clone(desired)

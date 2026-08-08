@@ -71,13 +71,16 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 }
 
 // sortedHeaders converts CRD headers to the intermediate model and orders them
-// by name. The CRD declares headers as a list-map, so order carries no meaning,
-// but Mackerel echoes back whatever order was submitted. Sorting both sides
-// keeps the planner from reporting a diff that does not exist.
-// The sort is stable because the resulting slice feeds the desired-state hash:
-// two headers sharing a name would otherwise be ordered non-deterministically,
-// flipping the hash between reconciles. The CRD's listType=map makes duplicate
-// names unreachable through the API server, so this only guards Go callers.
+// by name. The primary purpose is hash determinism: the resulting slice feeds
+// the desired-state hash, so the order must be stable across reconciles. The
+// CRD declares headers as a list-map, so the API server imposes no ordering,
+// and the same logical set of headers could arrive in any order. The planner
+// also sorts both sides before comparison, but the source-layer sort ensures
+// the hash remains the same regardless of the order in which the user wrote
+// the headers in the CR.
+// The sort is stable to guard Go callers that construct headers programmatically
+// with duplicate names; the CRD's listType=map makes such duplicates unreachable
+// through the API server.
 func sortedHeaders(headers []mackerelv1alpha1.HeaderField) []monitor.HeaderField {
 	sorted := make([]monitor.HeaderField, 0, len(headers))
 	for _, h := range headers {

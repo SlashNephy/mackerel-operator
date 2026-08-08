@@ -186,6 +186,34 @@ func TestPlanOwnershipLostWhenMarkerResourceDiffers(t *testing.T) {
 	}
 }
 
+// TestPlanOwnershipLostWhenMarkerMissingAndOnlyNewFieldDiffers pins the
+// adoption boundary introduced when the six new fields were brought under
+// operator control. Before this branch, MaxCheckAttempts was ignored in
+// actualMatchesDesired, so a marker-less monitor with a non-default value
+// would adopt cleanly. Now it routes to OwnershipLost, which is the correct
+// fail-safe: the operator cannot silently overwrite a value set in the UI.
+func TestPlanOwnershipLostWhenMarkerMissingAndOnlyNewFieldDiffers(t *testing.T) {
+	actual := monitor.ActualExternalMonitor{
+		ID:               "mon-1",
+		Name:             "api",
+		URL:              "https://example.com",
+		MaxCheckAttempts: 2, // differs from desired's 1; everything else matches
+		Memo:             "human memo",
+	}
+	decision := Plan(PlanInput{
+		Desired: monitor.DesiredExternalMonitor{
+			Name:             "api",
+			URL:              "https://example.com",
+			MaxCheckAttempts: 1,
+			Owner:            "prod",
+			Resource:         "externalmonitor/default/api",
+			Hash:             "deadbee",
+		},
+		Actual: &actual,
+	})
+	assert.Equal(t, ActionOwnershipLost, decision.Action, decision.Reason)
+}
+
 func TestPlanDetectsDriftOnRemainingFields(t *testing.T) {
 	t.Parallel()
 
