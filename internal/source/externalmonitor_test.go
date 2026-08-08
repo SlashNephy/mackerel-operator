@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
+	"github.com/SlashNephy/mackerel-operator/internal/monitor"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -151,4 +154,89 @@ func TestExternalMonitorSourceRejectsInvalidHashLength(t *testing.T) {
 	if err == nil {
 		t.Fatal("FromExternalMonitor returned nil error, want error")
 	}
+}
+
+func TestExternalMonitorSourceMapsRemainingFields(t *testing.T) {
+	t.Parallel()
+
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL:                         "https://api.example.com/healthz",
+			IsMute:                      true,
+			FollowRedirect:              true,
+			SkipCertificateVerification: true,
+			MaxCheckAttempts:            3,
+			RequestBody:                 `{"ping":true}`,
+			Headers: []mackerelv1alpha1.HeaderField{
+				{Name: "X-Zebra", Value: "last"},
+				{Name: "Authorization", Value: "Bearer token"},
+			},
+		},
+	}
+
+	src := ExternalMonitorSource{OwnerID: "prod", HashLength: 7}
+	got, err := src.FromExternalMonitor(cr)
+	require.NoError(t, err)
+
+	assert.True(t, got.IsMute)
+	assert.True(t, got.FollowRedirect)
+	assert.True(t, got.SkipCertificateVerification)
+	assert.Equal(t, 3, got.MaxCheckAttempts)
+	assert.Equal(t, `{"ping":true}`, got.RequestBody)
+	assert.Equal(t, []monitor.HeaderField{
+		{Name: "Authorization", Value: "Bearer token"},
+		{Name: "X-Zebra", Value: "last"},
+	}, got.Headers, "headers must be sorted by name so drift detection is order-insensitive")
+}
+
+func TestExternalMonitorSourceNormalisesMaxCheckAttempts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		spec int
+		want int
+	}{
+		{name: "unset defaults to one", spec: 0, want: 1},
+		{name: "explicit one", spec: 1, want: 1},
+		{name: "explicit three", spec: 3, want: 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cr := &mackerelv1alpha1.ExternalMonitor{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
+				Spec: mackerelv1alpha1.ExternalMonitorSpec{
+					URL:              "https://api.example.com/healthz",
+					MaxCheckAttempts: tt.spec,
+				},
+			}
+
+			src := ExternalMonitorSource{OwnerID: "prod", HashLength: 7}
+			got, err := src.FromExternalMonitor(cr)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got.MaxCheckAttempts)
+		})
+	}
+}
+
+func TestExternalMonitorSourceEmitsEmptyHeadersSlice(t *testing.T) {
+	t.Parallel()
+
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL: "https://api.example.com/healthz",
+		},
+	}
+
+	src := ExternalMonitorSource{OwnerID: "prod", HashLength: 7}
+	got, err := src.FromExternalMonitor(cr)
+	require.NoError(t, err)
+
+	assert.NotNil(t, got.Headers, "prefer an empty slice over nil")
+	assert.Empty(t, got.Headers)
 }
