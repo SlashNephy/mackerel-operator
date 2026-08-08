@@ -129,6 +129,12 @@ func actualExternalMonitorFromMackerel(m *mackerel.MonitorExternalHTTP) monitor.
 		ResponseTimeCritical:            intPtrFromFloat64(m.ResponseTimeCritical),
 		CertificationExpirationWarning:  intPtrFromUint64Ptr(m.CertificationExpirationWarning),
 		CertificationExpirationCritical: intPtrFromUint64Ptr(m.CertificationExpirationCritical),
+		IsMute:                          m.IsMute,
+		FollowRedirect:                  m.FollowRedirect,
+		SkipCertificateVerification:     m.SkipCertificateVerification,
+		MaxCheckAttempts:                intFromUint64(m.MaxCheckAttempts),
+		RequestBody:                     m.RequestBody,
+		Headers:                         headerFieldsFromMackerel(m.Headers),
 		Memo:                            m.Memo,
 	}
 }
@@ -164,6 +170,10 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	if err != nil {
 		return nil, err
 	}
+	maxCheckAttempts, err := uint64FromIntPtr(&desired.MaxCheckAttempts)
+	if err != nil {
+		return nil, err
+	}
 
 	merged := *base
 	merged.Type = "external"
@@ -180,6 +190,12 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	merged.CertificationExpirationWarning = certificationExpirationWarning
 	merged.CertificationExpirationCritical = certificationExpirationCritical
 	merged.ExpectedStatusCode = desired.ExpectedStatusCode
+	merged.IsMute = desired.IsMute
+	merged.FollowRedirect = desired.FollowRedirect
+	merged.SkipCertificateVerification = desired.SkipCertificateVerification
+	merged.MaxCheckAttempts = maxCheckAttempts
+	merged.RequestBody = desired.RequestBody
+	merged.Headers = headerFieldsToMackerel(desired.Headers)
 
 	return &merged, nil
 }
@@ -268,4 +284,34 @@ func float64PtrFromIntPtr(v *int) (*float64, error) {
 
 	f := float64(*v)
 	return &f, nil
+}
+
+func intFromUint64(v uint64) int {
+	if v > uint64(math.MaxInt) {
+		return 0
+	}
+
+	return int(v)
+}
+
+func headerFieldsFromMackerel(headers []mackerel.HeaderField) []monitor.HeaderField {
+	converted := make([]monitor.HeaderField, 0, len(headers))
+	for _, h := range headers {
+		converted = append(converted, monitor.HeaderField{Name: h.Name, Value: h.Value})
+	}
+
+	return converted
+}
+
+// headerFieldsToMackerel always returns a non-nil slice. mackerel-client-go
+// omits the omitempty tag on Headers so that an empty list can be sent to
+// remove every header; returning nil would silently leave the live headers in
+// place instead.
+func headerFieldsToMackerel(headers []monitor.HeaderField) []mackerel.HeaderField {
+	converted := make([]mackerel.HeaderField, 0, len(headers))
+	for _, h := range headers {
+		converted = append(converted, mackerel.HeaderField{Name: h.Name, Value: h.Value})
+	}
+
+	return converted
 }

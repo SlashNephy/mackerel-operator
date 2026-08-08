@@ -1,87 +1,148 @@
 package provider
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/SlashNephy/mackerel-operator/internal/monitor"
 	mackerel "github.com/mackerelio/mackerel-client-go"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestMergeMackerelExternalMonitorPreservesUnsupportedFields(t *testing.T) {
-	responseTimeDuration := uint64(3)
+func TestMergeMackerelExternalMonitorOwnsManagedFields(t *testing.T) {
+	t.Parallel()
+
+	// Every field the operator manages is overwritten from the desired state,
+	// even when the live monitor disagrees. Only server-assigned identity
+	// survives, so a change made in the Mackerel web UI is reverted.
 	base := &mackerel.MonitorExternalHTTP{
 		ID:                          "mon-1",
 		Type:                        "external",
 		IsMute:                      true,
 		MaxCheckAttempts:            5,
-		ResponseTimeDuration:        &responseTimeDuration,
-		RequestBody:                 "payload",
+		ResponseTimeDuration:        new(uint64(3)),
+		RequestBody:                 "stale payload",
 		SkipCertificateVerification: true,
 		FollowRedirect:              true,
 		Headers: []mackerel.HeaderField{
-			{Name: "Authorization", Value: "Bearer token"},
+			{Name: "X-Stale", Value: "removed"},
 		},
 	}
-	interval := 10
-	expectedStatus := 200
-	warning := 1000
-	critical := 2000
-	certWarning := 30
-	certCritical := 14
 	desired := monitor.DesiredExternalMonitor{
 		Name:                            "API health",
 		Service:                         "my-service",
 		URL:                             "https://api.example.com/healthz",
 		Method:                          "GET",
-		NotificationInterval:            &interval,
-		ExpectedStatusCode:              &expectedStatus,
+		NotificationInterval:            new(10),
+		ExpectedStatusCode:              new(200),
 		ContainsString:                  "ok",
-		ResponseTimeWarning:             &warning,
-		ResponseTimeCritical:            &critical,
-		CertificationExpirationWarning:  &certWarning,
-		CertificationExpirationCritical: &certCritical,
+		ResponseTimeWarning:             new(1000),
+		ResponseTimeCritical:            new(2000),
+		CertificationExpirationWarning:  new(30),
+		CertificationExpirationCritical: new(14),
+		IsMute:                          false,
+		FollowRedirect:                  false,
+		SkipCertificateVerification:     false,
+		MaxCheckAttempts:                2,
+		RequestBody:                     `{"ping":true}`,
+		Headers: []monitor.HeaderField{
+			{Name: "Authorization", Value: "Bearer token"},
+		},
 	}
 
 	got, err := mergeMackerelExternalMonitor(base, desired, "human memo")
-	if err != nil {
-		t.Fatalf("mergeMackerelExternalMonitor returned error: %v", err)
+	require.NoError(t, err)
+
+	assert.Equal(t, "mon-1", got.ID, "server-assigned identity is preserved")
+	assert.Equal(t, "external", got.Type)
+
+	assert.False(t, got.IsMute)
+	assert.False(t, got.FollowRedirect)
+	assert.False(t, got.SkipCertificateVerification)
+	assert.Equal(t, uint64(2), got.MaxCheckAttempts)
+	assert.Equal(t, `{"ping":true}`, got.RequestBody)
+	assert.Equal(t, []mackerel.HeaderField{{Name: "Authorization", Value: "Bearer token"}}, got.Headers)
+
+	assert.Nil(t, got.ResponseTimeDuration)
+	assert.Equal(t, desired.Name, got.Name)
+	assert.Equal(t, desired.Service, got.Service)
+	assert.Equal(t, desired.URL, got.URL)
+	assert.Equal(t, desired.Method, got.Method)
+	assert.Equal(t, "human memo", got.Memo)
+	assert.Equal(t, uint64(10), got.NotificationInterval)
+}
+
+func TestMergeMackerelExternalMonitorClearsHeadersWithEmptySlice(t *testing.T) {
+	t.Parallel()
+
+	// mackerel-client-go tags Headers without omitempty precisely so that an
+	// empty list can be transmitted. Sending nil would leave the live headers
+	// in place, so clearing every header has to produce a non-nil empty slice.
+	base := &mackerel.MonitorExternalHTTP{
+		Headers: []mackerel.HeaderField{{Name: "X-Stale", Value: "removed"}},
+	}
+	desired := monitor.DesiredExternalMonitor{
+		Name:    "API health",
+		URL:     "https://api.example.com/healthz",
+		Method:  "GET",
+		Headers: []monitor.HeaderField{},
 	}
 
-	if got.ID != "mon-1" {
-		t.Fatalf("ID = %q, want mon-1", got.ID)
-	}
-	if !got.IsMute {
-		t.Fatal("IsMute = false, want true")
-	}
-	if got.MaxCheckAttempts != 5 {
-		t.Fatalf("MaxCheckAttempts = %d, want 5", got.MaxCheckAttempts)
-	}
-	if got.ResponseTimeDuration != nil {
-		t.Fatalf("ResponseTimeDuration = %v, want nil", got.ResponseTimeDuration)
-	}
-	if got.RequestBody != "payload" {
-		t.Fatalf("RequestBody = %q, want payload", got.RequestBody)
-	}
-	if !got.SkipCertificateVerification {
-		t.Fatal("SkipCertificateVerification = false, want true")
-	}
-	if !got.FollowRedirect {
-		t.Fatal("FollowRedirect = false, want true")
-	}
-	if len(got.Headers) != 1 || got.Headers[0].Name != "Authorization" || got.Headers[0].Value != "Bearer token" {
-		t.Fatalf("Headers = %#v, want preserved Authorization header", got.Headers)
+	got, err := mergeMackerelExternalMonitor(base, desired, "")
+	require.NoError(t, err)
+
+	require.NotNil(t, got.Headers)
+	assert.Empty(t, got.Headers)
+
+	encoded, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"headers":[]`)
+}
+
+func TestActualExternalMonitorFromMackerelReadsRemainingFields(t *testing.T) {
+	t.Parallel()
+
+	got := actualExternalMonitorFromMackerel(&mackerel.MonitorExternalHTTP{
+		ID:                          "mon-1",
+		Name:                        "API health",
+		URL:                         "https://api.example.com/healthz",
+		Method:                      "GET",
+		IsMute:                      true,
+		FollowRedirect:              true,
+		SkipCertificateVerification: true,
+		MaxCheckAttempts:            4,
+		RequestBody:                 `{"ping":true}`,
+		Headers: []mackerel.HeaderField{
+			{Name: "X-Zebra", Value: "last"},
+			{Name: "Authorization", Value: "Bearer token"},
+		},
+	})
+
+	assert.True(t, got.IsMute)
+	assert.True(t, got.FollowRedirect)
+	assert.True(t, got.SkipCertificateVerification)
+	assert.Equal(t, 4, got.MaxCheckAttempts)
+	assert.Equal(t, `{"ping":true}`, got.RequestBody)
+	assert.Equal(t, []monitor.HeaderField{
+		{Name: "X-Zebra", Value: "last"},
+		{Name: "Authorization", Value: "Bearer token"},
+	}, got.Headers, "the provider reads headers verbatim; the planner handles ordering")
+}
+
+func TestMergeMackerelExternalMonitorRejectsNegativeMaxCheckAttempts(t *testing.T) {
+	t.Parallel()
+
+	desired := monitor.DesiredExternalMonitor{
+		Name:             "API health",
+		URL:              "https://api.example.com/healthz",
+		Method:           "GET",
+		MaxCheckAttempts: -1,
 	}
 
-	if got.Name != desired.Name || got.Service != desired.Service || got.URL != desired.URL || got.Method != desired.Method {
-		t.Fatalf("managed fields not applied: got=%#v desired=%#v", got, desired)
-	}
-	if got.Memo != "human memo" {
-		t.Fatalf("Memo = %q, want human memo", got.Memo)
-	}
-	if got.NotificationInterval != uint64(interval) {
-		t.Fatalf("NotificationInterval = %d, want %d", got.NotificationInterval, interval)
-	}
+	_, err := mergeMackerelExternalMonitor(&mackerel.MonitorExternalHTTP{}, desired, "")
+	require.ErrorIs(t, err, errNegativeIntValue)
 }
 
 func TestMergeMackerelExternalMonitorAppliesResponseTimeDuration(t *testing.T) {
