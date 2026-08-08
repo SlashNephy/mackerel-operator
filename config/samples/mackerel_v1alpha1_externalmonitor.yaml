@@ -22,7 +22,6 @@ spec:
   followRedirect: true
   skipCertificateVerification: false
   maxCheckAttempts: 3
-  requestBody: ""
   headers:
     - name: X-Request-Source
       value: mackerel-operator

@@ -47,11 +47,15 @@ The three booleans and `maxCheckAttempts` use plain types with `kubebuilder:defa
 
 ## Field Semantics Verified Against the Live API
 
-Two behaviours drive the design and were confirmed against `api.mackerelio.com` by creating a temporary external monitor, reading it back, and deleting it.
+Four behaviours drive the design and were confirmed against `api.mackerelio.com` by creating a temporary external monitor, mutating it, reading it back, and deleting it.
+
+**Mackerel's `PUT /api/v0/monitors/{id}` is a genuine full replace.** Omitting `isMute`, `followRedirect`, `skipCertificateVerification`, or `requestBody` from the request body **resets** them to their defaults rather than leaving them unchanged. `mackerel-client-go` tags all four `omitempty`, so writing `false`/`""` emits no JSON key, and Mackerel resets the field. This means the operator can reliably clear any of these fields by writing their zero value — there is no need for an explicit "clear" mechanism.
 
 Header values are **not** masked. Both `GET /api/v0/monitors/{id}` and `GET /api/v0/monitors` return `value` verbatim. Drift detection can therefore compare header names and values in full; no carve-out is needed.
 
 Header order is **preserved as sent**, not normalised by Mackerel. Headers submitted as `Authorization, X-Zebra, X-Alpha` were returned in that same order. Because `listType=map` declares the list order-insensitive, both sides must be sorted by name before comparison.
+
+**Mackerel does not normalise header name casing.** `X-Foo-Bar` is echoed back verbatim as submitted. The operator does not need to normalise header names before comparing or sending them.
 
 `requestBody`, `isMute`, `followRedirect`, `skipCertificateVerification`, and `maxCheckAttempts` all appear in read responses, so each is usable for drift detection.
 
@@ -76,7 +80,17 @@ Mackerel replaces the whole monitor on update and returns a normalised represent
 
 `HashDesired` marshals `DesiredExternalMonitor` to JSON, so a new field tagged `omitempty` and left at its zero value does not change the hash. The three booleans, `requestBody`, and `headers` are therefore invisible to existing monitors. This holds for headers whether the source layer emits nil or an empty slice, since `omitempty` drops both; the repository convention of preferring empty slices over nil is kept.
 
-`maxCheckAttempts` is the exception. Defaulting it to `1` makes `"maxCheckAttempts":1` appear in the marshalled desired state, changing the hash of every existing `ExternalMonitor`. Each one will take a single `Update` on its next reconcile. The write is idempotent and rewrites the same values plus the new marker hash, so the churn is bounded and self-healing. This is accepted rather than worked around, because the alternatives — excluding the field from the hash, or leaving it at `0` and special-casing the comparison — trade a one-time sweep for permanent special cases.
+`maxCheckAttempts` is the exception. Defaulting it to `1` makes `"maxCheckAttempts":1` appear in the marshalled desired state, changing the hash of every existing `ExternalMonitor`. Each one will take a single `Update` on its next reconcile.
+
+**That sweep is not purely cosmetic.** On upgrade, `mergeMackerelExternalMonitor` overwrites all six fields from the CR rather than preserving live values. The consequence is:
+
+1. Every existing `ExternalMonitor` whose hash changes due to the `maxCheckAttempts` default takes one `Update` on its next reconcile.
+2. That `Update` overwrites all six fields with the CR's values (or their defaults).
+3. A monitor that was **muted in the Mackerel web UI** is therefore **unmuted** on the first reconcile after upgrade, unless the CR explicitly sets `isMute: true`.
+
+Unmuting can cause alerts to fire immediately if the monitor is in a failing state. Users must be warned and given the opportunity to set `isMute: true` in the CR before upgrading.
+
+The sweep itself is accepted rather than worked around, because the alternatives — excluding the field from the hash, or leaving it at `0` and special-casing the comparison — trade a one-time sweep for permanent special cases.
 
 ## Ownership Semantics Change
 
@@ -85,6 +99,8 @@ Mackerel replaces the whole monitor on update and returns a normalised represent
 Bringing them under the CRD inverts that contract. The operator becomes the source of truth for all six, and a value changed in the Mackerel web UI is reverted on the next reconcile. That is the correct declarative behaviour and the point of the issue, but it is a behavioural change for anyone who has been muting an operator-managed monitor from the UI.
 
 The existing test is therefore rewritten rather than extended: it keeps its role of pinning the preserve-versus-own boundary, but the six fields move from the preserved side to the owned side. `ID` and `Type` remain on the preserved side.
+
+**Adoption of pre-existing monitors is narrowed.** Before this change, `findActual` could return a name-matched, marker-less monitor and `Plan` would route to `ActionRestoreMarker` as long as the core fields (name, URL, method, etc.) matched the desired state. With six new fields added to `actualMatchesDesired`, that adopt path now requires the CR to spell out the values of all six new fields correctly. A monitor created in the Mackerel UI with `maxCheckAttempts: 2`, any custom headers, or `isMute: true` will route to `ActionOwnershipLost` instead of adopting. `OwnershipLost` is the correct fail-safe: the controller surfaces a status condition rather than silently overwriting values. Users adopting such monitors must add the matching field values to the CR before the operator will adopt them.
 
 ## Testing
 
