@@ -24,6 +24,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -98,8 +99,13 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	if !controllerutil.ContainsFinalizer(cr, externalMonitorFinalizer) {
-		controllerutil.AddFinalizer(cr, externalMonitorFinalizer)
-		if err := r.Update(ctx, cr); err != nil {
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			if err := r.Get(ctx, req.NamespacedName, cr); err != nil {
+				return err
+			}
+			controllerutil.AddFinalizer(cr, externalMonitorFinalizer)
+			return r.Update(ctx, cr)
+		}); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -171,7 +177,21 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		URL:       synced.URL,
 		Name:      synced.Name,
 	})
-	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.Status().Update(ctx, cr)
+	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.Get(ctx, req.NamespacedName, cr); err != nil {
+			return err
+		}
+		operatorstatus.MarkReady(cr, operatorstatus.SyncResult{
+			MonitorID: synced.ID,
+			Hash:      desired.Hash,
+			URL:       synced.URL,
+			Name:      synced.Name,
+		})
+		return r.Status().Update(ctx, cr)
+	}); err != nil {
+		return ctrl.Result{RequeueAfter: defaultRequeueAfter}, err
+	}
+	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
