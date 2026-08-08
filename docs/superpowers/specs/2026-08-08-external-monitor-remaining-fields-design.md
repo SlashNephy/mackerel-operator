@@ -78,6 +78,14 @@ Mackerel replaces the whole monitor on update and returns a normalised represent
 
 `maxCheckAttempts` is the exception. Defaulting it to `1` makes `"maxCheckAttempts":1` appear in the marshalled desired state, changing the hash of every existing `ExternalMonitor`. Each one will take a single `Update` on its next reconcile. The write is idempotent and rewrites the same values plus the new marker hash, so the churn is bounded and self-healing. This is accepted rather than worked around, because the alternatives — excluding the field from the hash, or leaving it at `0` and special-casing the comparison — trade a one-time sweep for permanent special cases.
 
+## Ownership Semantics Change
+
+`mergeMackerelExternalMonitor` copies the current monitor and overwrites only the fields the operator manages. Everything else survives, which is what `TestMergeMackerelExternalMonitorPreservesUnsupportedFields` pins: today the six fields in scope are deliberately left untouched so the MVP does not clobber values set elsewhere.
+
+Bringing them under the CRD inverts that contract. The operator becomes the source of truth for all six, and a value changed in the Mackerel web UI is reverted on the next reconcile. That is the correct declarative behaviour and the point of the issue, but it is a behavioural change for anyone who has been muting an operator-managed monitor from the UI.
+
+The existing test is therefore rewritten rather than extended: it keeps its role of pinning the preserve-versus-own boundary, but the six fields move from the preserved side to the owned side. `ID` and `Type` remain on the preserved side.
+
 ## Testing
 
 Table-driven tests with testify, per the existing convention in each package.
