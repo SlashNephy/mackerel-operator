@@ -2,5 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "local>SlashNephy/renovate-config"
+  ],
+  "packageRules": [
+    {
+      "description": "This image is built and released by this repository itself. Letting Renovate pin its digest creates an update loop: a merged digest bump pushes to main, which rebuilds the image, which produces a new digest.",
+      "matchDepNames": [
+        "ghcr.io/slashnephy/mackerel-operator"
+      ],
+      "enabled": false
+    }
   ]
 }

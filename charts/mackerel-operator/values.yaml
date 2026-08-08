@@ -3,7 +3,9 @@ replicaCount: 1
 image:
   repository: ghcr.io/slashnephy/mackerel-operator
   pullPolicy: IfNotPresent
-  tag: "@sha256:4c5eef8cf455e37226b79ed6bce53dcd35f6e7d13bd0fe4a32a8e9d04f05baf6"
+  # Defaults to .Chart.AppVersion. This image is built by this repository itself,
+  # so it is excluded from Renovate updates (see renovate.json).
+  tag: ""
 
 imagePullSecrets: []
 nameOverride: ""
