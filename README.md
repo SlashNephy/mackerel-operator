@@ -46,6 +46,19 @@ spec:
   memo: Check the connection to the API.
 ```
 
+`requestBody` is omitted above because the example uses `method: GET`. It applies
+to monitors that send a payload:
+
+```yaml
+spec:
+  url: https://api.example.com/graphql
+  method: POST
+  headers:
+    - name: Content-Type
+      value: application/json
+  requestBody: '{"query":"{ health }"}'
+```
+
 Header values are stored in plain text in the cluster and are returned unmasked
 by the Mackerel API. Avoid putting credentials in `headers` until Secret
 references are supported.

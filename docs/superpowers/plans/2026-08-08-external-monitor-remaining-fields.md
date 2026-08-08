@@ -1165,7 +1165,7 @@ Delete any monitor created for verification, and confirm the deletion by listing
 
 - [ ] **Step 3: Open the follow-up issue for Secret-backed header values**
 
-```bash
+````bash
 gh issue create \
   --title "Support Secret references for external monitor header values" \
   --label enhancement \
@@ -1191,7 +1191,7 @@ Work involved:
 - Decide the failure mode when a referenced Secret or key is missing: block the reconcile with a `Ready=False` condition rather than sending a partial header set.
 
 The Mackerel API returns header values unmasked on read, which the drift comparison in `internal/planner` already relies on.'
-```
+````
 
 Expected: prints the URL of the new issue. Record it for the PR body.
 
