@@ -81,8 +81,7 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if !cr.DeletionTimestamp.IsZero() {
 		desired, err := r.externalMonitorDeletionSource().FromExternalMonitor(cr)
 		if err != nil {
-			controllerutil.RemoveFinalizer(cr, externalMonitorFinalizer)
-			return ctrl.Result{}, r.Update(ctx, cr)
+			return ctrl.Result{}, r.removeFinalizer(ctx, cr)
 		}
 		actual, err := r.findActual(ctx, cr.Status.MonitorID, desired)
 		if err != nil {
@@ -93,21 +92,22 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	desired, err := r.externalMonitorSource().FromExternalMonitor(cr)
 	if err != nil {
-		operatorstatus.MarkInvalidSpec(cr, err.Error())
-		return ctrl.Result{}, r.Status().Update(ctx, cr)
+		return ctrl.Result{}, r.patchStatus(ctx, cr, func() {
+			operatorstatus.MarkInvalidSpec(cr, err.Error())
+		})
 	}
 
 	if !controllerutil.ContainsFinalizer(cr, externalMonitorFinalizer) {
-		controllerutil.AddFinalizer(cr, externalMonitorFinalizer)
-		if err := r.Update(ctx, cr); err != nil {
+		if err := r.addFinalizer(ctx, cr); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
 	actual, err := r.findActual(ctx, cr.Status.MonitorID, desired)
 	if err != nil {
-		operatorstatus.MarkError(cr, "ProviderError", err.Error())
-		if statusErr := r.Status().Update(ctx, cr); statusErr != nil {
+		if statusErr := r.patchStatus(ctx, cr, func() {
+			operatorstatus.MarkError(cr, "ProviderError", err.Error())
+		}); statusErr != nil {
 			return ctrl.Result{}, errors.Join(err, statusErr)
 		}
 		return ctrl.Result{}, err
@@ -145,15 +145,17 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	case planner.ActionNoop:
 		synced = actual
 	case planner.ActionOwnershipLost:
-		operatorstatus.MarkOwnershipLost(cr, decision.Reason)
-		return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.Status().Update(ctx, cr)
+		return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.patchStatus(ctx, cr, func() {
+			operatorstatus.MarkOwnershipLost(cr, decision.Reason)
+		})
 	default:
 		return ctrl.Result{}, fmt.Errorf("unsupported planner action: %s", decision.Action)
 	}
 
 	if err != nil {
-		operatorstatus.MarkError(cr, "ProviderError", err.Error())
-		if statusErr := r.Status().Update(ctx, cr); statusErr != nil {
+		if statusErr := r.patchStatus(ctx, cr, func() {
+			operatorstatus.MarkError(cr, "ProviderError", err.Error())
+		}); statusErr != nil {
 			return ctrl.Result{}, errors.Join(err, statusErr)
 		}
 		if errors.Is(err, provider.ErrRateLimited) {
@@ -165,13 +167,47 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("provider returned nil external monitor")
 	}
 
-	operatorstatus.MarkReady(cr, operatorstatus.SyncResult{
-		MonitorID: synced.ID,
-		Hash:      desired.Hash,
-		URL:       synced.URL,
-		Name:      synced.Name,
+	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.patchStatus(ctx, cr, func() {
+		operatorstatus.MarkReady(cr, operatorstatus.SyncResult{
+			MonitorID: synced.ID,
+			Hash:      desired.Hash,
+			URL:       synced.URL,
+			Name:      synced.Name,
+		})
 	})
-	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.Status().Update(ctx, cr)
+}
+
+// patchStatus applies mark to cr and persists only the resulting status diff as a
+// merge patch. Unlike Update, a merge patch carries no resourceVersion precondition,
+// so a spec change landing while the provider call is in flight does not turn into a
+// conflict error.
+func (r *ExternalMonitorReconciler) patchStatus(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor, mark func()) error {
+	patch := client.MergeFrom(cr.DeepCopy())
+	mark()
+	return r.Status().Patch(ctx, cr, patch)
+}
+
+func (r *ExternalMonitorReconciler) addFinalizer(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor) error {
+	return r.patchFinalizers(ctx, cr, func() {
+		controllerutil.AddFinalizer(cr, externalMonitorFinalizer)
+	})
+}
+
+func (r *ExternalMonitorReconciler) removeFinalizer(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor) error {
+	return r.patchFinalizers(ctx, cr, func() {
+		controllerutil.RemoveFinalizer(cr, externalMonitorFinalizer)
+	})
+}
+
+// patchFinalizers persists a finalizer change as a minimal patch instead of sending
+// the whole object. The optimistic lock is deliberate: a merge patch replaces
+// metadata.finalizers wholesale, so without it a finalizer added concurrently by
+// another controller would be dropped. Conflicts here are rare because the patch is
+// issued right after the initial Get, and they are resolved by the next reconciliation.
+func (r *ExternalMonitorReconciler) patchFinalizers(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor, mutate func()) error {
+	patch := client.MergeFromWithOptions(cr.DeepCopy(), client.MergeFromWithOptimisticLock{})
+	mutate()
+	return r.Patch(ctx, cr, patch)
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -228,8 +264,7 @@ func (r *ExternalMonitorReconciler) reconcileDelete(ctx context.Context, cr *mac
 		return ctrl.Result{}, fmt.Errorf("unsupported delete planner action: %s", decision.Action)
 	}
 
-	controllerutil.RemoveFinalizer(cr, externalMonitorFinalizer)
-	return ctrl.Result{}, r.Update(ctx, cr)
+	return ctrl.Result{}, r.removeFinalizer(ctx, cr)
 }
 
 func (r *ExternalMonitorReconciler) externalMonitorSource() source.ExternalMonitorSource {
