@@ -388,6 +388,60 @@ func TestExternalMonitorReconciler_ReconcileRateLimited(t *testing.T) {
 	assert.Equal(t, "ProviderError", ready.Reason)
 }
 
+func TestExternalMonitorReconciler_ReconcileSurvivesConcurrentSpecUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	scheme := newExternalMonitorTestScheme(t)
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "api-health",
+			Namespace: "default",
+		},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL: "https://example.com/healthz",
+		},
+	}
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(&mackerelv1alpha1.ExternalMonitor{}).
+		Build()
+	provider := newFakeExternalMonitorProvider()
+	// Someone edits the spec while the reconciler is talking to Mackerel, which bumps
+	// the resourceVersion the reconciler read at the beginning of Reconcile.
+	provider.beforeCreate = func() {
+		concurrent := &mackerelv1alpha1.ExternalMonitor{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), concurrent))
+		concurrent.Spec.Memo = "edited by someone else"
+		require.NoError(t, k8sClient.Update(ctx, concurrent))
+	}
+	reconciler := &ExternalMonitorReconciler{
+		Client:     k8sClient,
+		Scheme:     scheme,
+		Provider:   provider,
+		OwnerID:    "prod",
+		Policy:     "sync",
+		HashLength: 7,
+	}
+
+	result, err := reconciler.Reconcile(ctx, reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "api-health", Namespace: "default"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, defaultRequeueAfter, result.RequeueAfter)
+
+	synced := &mackerelv1alpha1.ExternalMonitor{}
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), synced))
+	assert.Equal(t, "mon-1", synced.Status.MonitorID)
+	ready := meta.FindStatusCondition(synced.Status.Conditions, operatorstatus.ConditionReady)
+	require.NotNil(t, ready)
+	assert.Equal(t, metav1.ConditionTrue, ready.Status)
+	// The status patch must not roll back the concurrent spec edit.
+	assert.Equal(t, "edited by someone else", synced.Spec.Memo)
+}
+
 func TestExternalMonitorReconciler_ReconcileDelete(t *testing.T) {
 	t.Parallel()
 
@@ -487,6 +541,9 @@ type fakeExternalMonitorProvider struct {
 	updatedMemo  []string
 	updateErr    error
 	deleted      map[string]bool
+	// beforeCreate runs while the provider call is in flight, so tests can simulate
+	// another writer touching the resource during that window.
+	beforeCreate func()
 }
 
 func newFakeExternalMonitorProvider() *fakeExternalMonitorProvider {
@@ -522,6 +579,9 @@ func (p *fakeExternalMonitorProvider) ListExternalMonitors(_ context.Context) ([
 }
 
 func (p *fakeExternalMonitorProvider) CreateExternalMonitor(_ context.Context, desired monitor.DesiredExternalMonitor, memo string) (*monitor.ActualExternalMonitor, error) {
+	if p.beforeCreate != nil {
+		p.beforeCreate()
+	}
 	if p.createErr != nil {
 		return nil, p.createErr
 	}
