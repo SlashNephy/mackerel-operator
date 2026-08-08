@@ -8,7 +8,11 @@ Closes #21.
 
 ## Scope
 
-The gap was determined by diffing `ExternalMonitorSpec` against `mackerel.MonitorExternalHTTP` in `mackerel-client-go` v0.45.0, which itself covers every parameter documented at <https://mackerel.io/api-docs/entry/monitors>.
+The gap was determined by diffing `ExternalMonitorSpec` against `mackerel.MonitorExternalHTTP` in `mackerel-client-go` v0.45.0.
+
+> **Correction.** This section originally claimed the SDK "covers every parameter documented at <https://mackerel.io/api-docs/entry/monitors>". That was an assumption, not a finding, and it is wrong. Mackerel's external monitors also accept `dualstack` (values `ipv4` / `ipv6` / `auto`), added 2026-04-22, which appears in none of the SDK, the public API docs, or `terraform-provider-mackerel`. Diffing against the SDK therefore measured what the SDK knows, not what the API accepts, and the six fields below are not the whole surface. Tracked as a follow-up issue.
+>
+> The method that would have caught it: enumerate the keys actually returned by `GET /api/v0/monitors/{id}` for existing monitors and subtract the documented set. `dualstack` is absent from the list endpoint and appears only on per-monitor GETs, so a survey of `GET /api/v0/monitors` alone does not reveal it.
 
 | Field | Type | Default | Validation |
 | --- | --- | --- | --- |
@@ -47,9 +51,13 @@ The three booleans and `maxCheckAttempts` use plain types with `kubebuilder:defa
 
 ## Field Semantics Verified Against the Live API
 
-Four behaviours drive the design and were confirmed against `api.mackerelio.com` by creating a temporary external monitor, mutating it, reading it back, and deleting it.
+Several behaviours drive the design and were confirmed against `api.mackerelio.com` by creating a temporary external monitor, mutating it, reading it back, and deleting it.
 
-**Mackerel's `PUT /api/v0/monitors/{id}` is a genuine full replace.** Omitting `isMute`, `followRedirect`, `skipCertificateVerification`, or `requestBody` from the request body **resets** them to their defaults rather than leaving them unchanged. `mackerel-client-go` tags all four `omitempty`, so writing `false`/`""` emits no JSON key, and Mackerel resets the field. This means the operator can reliably clear any of these fields by writing their zero value — there is no need for an explicit "clear" mechanism.
+**Mackerel's `PUT /api/v0/monitors/{id}` is a full replace for these fields.** Omitting `isMute`, `followRedirect`, `skipCertificateVerification`, or `requestBody` from the request body **resets** them to their defaults rather than leaving them unchanged. `mackerel-client-go` tags all four `omitempty`, so writing `false`/`""` emits no JSON key, and Mackerel resets the field. This means the operator can reliably clear any of these fields by writing their zero value — there is no need for an explicit "clear" mechanism.
+
+> **Correction.** "Full replace" is not a uniform rule for this endpoint, as originally implied. `dualstack` survives a `PUT` that omits it. Verified by creating a monitor with `dualstack: "ipv6"`, issuing a `PUT` shaped exactly like the one `mergeMackerelExternalMonitor` sends, and reading it back unchanged. So absent-key behaviour has to be established per field rather than assumed from the four above.
+
+**Mackerel injects `Cache-Control: no-cache` as a default header.** A monitor created with no `headers` key at all comes back carrying it. This was missed during the original verification, which exercised header round-tripping and clearing but never created a monitor without the key and inspected the result. The consequence is that "unspecified means empty" removes a default that exists to stop cached responses from masking an outage. Tracked as a follow-up issue.
 
 Header values are **not** masked. Both `GET /api/v0/monitors/{id}` and `GET /api/v0/monitors` return `value` verbatim. Drift detection can therefore compare header names and values in full; no carve-out is needed.
 
