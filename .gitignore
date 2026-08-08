@@ -31,3 +31,6 @@ go.work
 
 # Local caches
 .cache/
+
+# superpowers scratch (plans/reviews workspace)
+.superpowers/

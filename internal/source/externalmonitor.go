@@ -3,6 +3,8 @@ package source
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
 	"github.com/SlashNephy/mackerel-operator/internal/monitor"
@@ -30,6 +32,11 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 		method = "GET"
 	}
 
+	// Mackerel reports 1 for monitors created without maxCheckAttempts, so an
+	// unset value has to be widened here. Leaving it at 0 would make the
+	// planner see a permanent diff and rewrite the monitor on every reconcile.
+	maxCheckAttempts := max(cr.Spec.MaxCheckAttempts, 1)
+
 	desired := monitor.DesiredExternalMonitor{
 		Name:                            name,
 		Service:                         cr.Spec.Service,
@@ -43,6 +50,12 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 		ResponseTimeCritical:            cr.Spec.ResponseTimeCritical,
 		CertificationExpirationWarning:  cr.Spec.CertificationExpirationWarning,
 		CertificationExpirationCritical: cr.Spec.CertificationExpirationCritical,
+		IsMute:                          cr.Spec.IsMute,
+		FollowRedirect:                  cr.Spec.FollowRedirect,
+		SkipCertificateVerification:     cr.Spec.SkipCertificateVerification,
+		MaxCheckAttempts:                maxCheckAttempts,
+		RequestBody:                     cr.Spec.RequestBody,
+		Headers:                         sortedHeaders(cr.Spec.Headers),
 		Memo:                            cr.Spec.Memo,
 		Resource:                        fmt.Sprintf("externalmonitor/%s/%s", cr.Namespace, cr.Name),
 		Owner:                           s.OwnerID,
@@ -55,4 +68,28 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 	desired.Hash = hash
 
 	return desired, nil
+}
+
+// sortedHeaders converts CRD headers to the intermediate model and orders them
+// by name. The primary purpose is hash determinism: the resulting slice feeds
+// the desired-state hash, so the order must be stable across reconciles. The
+// CRD declares headers as a list-map, so the API server imposes no ordering,
+// and the same logical set of headers could arrive in any order. The planner
+// also sorts both sides before comparison, but the source-layer sort ensures
+// the hash remains the same regardless of the order in which the user wrote
+// the headers in the CR.
+// The sort is stable to guard Go callers that construct headers programmatically
+// with duplicate names; the CRD's listType=map makes such duplicates unreachable
+// through the API server.
+func sortedHeaders(headers []mackerelv1alpha1.HeaderField) []monitor.HeaderField {
+	sorted := make([]monitor.HeaderField, 0, len(headers))
+	for _, h := range headers {
+		sorted = append(sorted, monitor.HeaderField{Name: h.Name, Value: h.Value})
+	}
+
+	slices.SortStableFunc(sorted, func(a, b monitor.HeaderField) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+
+	return sorted
 }

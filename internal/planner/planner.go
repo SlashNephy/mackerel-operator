@@ -2,6 +2,8 @@ package planner
 
 import (
 	"reflect"
+	"slices"
+	"strings"
 
 	"github.com/SlashNephy/mackerel-operator/internal/monitor"
 	"github.com/SlashNephy/mackerel-operator/internal/ownership"
@@ -82,5 +84,38 @@ func actualMatchesDesired(desired monitor.DesiredExternalMonitor, actual monitor
 		reflect.DeepEqual(desired.ResponseTimeWarning, actual.ResponseTimeWarning) &&
 		reflect.DeepEqual(desired.ResponseTimeCritical, actual.ResponseTimeCritical) &&
 		reflect.DeepEqual(desired.CertificationExpirationWarning, actual.CertificationExpirationWarning) &&
-		reflect.DeepEqual(desired.CertificationExpirationCritical, actual.CertificationExpirationCritical)
+		reflect.DeepEqual(desired.CertificationExpirationCritical, actual.CertificationExpirationCritical) &&
+		desired.IsMute == actual.IsMute &&
+		desired.FollowRedirect == actual.FollowRedirect &&
+		desired.SkipCertificateVerification == actual.SkipCertificateVerification &&
+		desired.MaxCheckAttempts == actual.MaxCheckAttempts &&
+		desired.RequestBody == actual.RequestBody &&
+		headersMatch(desired.Headers, actual.Headers)
+}
+
+// headersMatch compares headers as an unordered set keyed by name. Mackerel
+// preserves the submission order rather than normalising it, so comparing the
+// slices positionally would report drift for a monitor that is in sync.
+// The comparator uses a name-then-value total order. The CRD's listType=map
+// prevents duplicate names on the desired side, so the value tiebreak is
+// unreachable in practice, but a total order removes the need for the reader
+// to reconstruct that reachability argument.
+func headersMatch(desired, actual []monitor.HeaderField) bool {
+	if len(desired) != len(actual) {
+		return false
+	}
+
+	byName := func(a, b monitor.HeaderField) int {
+		if c := strings.Compare(a.Name, b.Name); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Value, b.Value)
+	}
+
+	sortedDesired := slices.Clone(desired)
+	slices.SortFunc(sortedDesired, byName)
+	sortedActual := slices.Clone(actual)
+	slices.SortFunc(sortedActual, byName)
+
+	return slices.Equal(sortedDesired, sortedActual)
 }

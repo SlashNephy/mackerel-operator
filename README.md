@@ -36,8 +36,40 @@ spec:
   responseTimeCritical: 5000
   certificationExpirationWarning: 30
   certificationExpirationCritical: 14
+  isMute: false
+  followRedirect: true
+  skipCertificateVerification: false
+  maxCheckAttempts: 3
+  headers:
+    - name: X-Request-Source
+      value: mackerel-operator
   memo: Check the connection to the API.
 ```
+
+`requestBody` is omitted above because the example uses `method: GET`. It applies
+to monitors that send a payload:
+
+```yaml
+spec:
+  url: https://api.example.com/graphql
+  method: POST
+  headers:
+    - name: Content-Type
+      value: application/json
+  requestBody: '{"query":"{ health }"}'
+```
+
+Header values are stored in plain text in the cluster and are returned unmasked
+by the Mackerel API. Avoid putting credentials in `headers` until Secret
+references are supported.
+
+### Upgrading from a version without `isMute`, `followRedirect`, `skipCertificateVerification`, `maxCheckAttempts`, `requestBody`, or `headers`
+
+These six fields are now fully managed by the operator. **Before upgrading**, check every `ExternalMonitor` in the cluster and set each of these fields in the CR to reflect the value you rely on, whether that value was set in the Mackerel web UI, via the API, or by another tool. After the upgrade, the operator becomes the sole source of truth for these fields; any value set outside the CR is replaced on the next reconcile.
+
+The most disruptive case is `isMute`. A monitor that was muted in the Mackerel web UI will be **unmuted automatically** on the first reconcile after the upgrade unless you add `isMute: true` to the CR before upgrading. Unmuting can cause alerts to fire immediately if the monitor is in a failing state.
+
+The other change to be aware of is monitor adoption. Before this release, the operator would adopt a name-matched, marker-less Mackerel monitor (one created in the UI before the operator was set up) even if that monitor had a non-default `maxCheckAttempts`, custom headers, or any of the other new fields. After the upgrade, the operator requires the CR to spell out those field values exactly. If the monitor's current values do not match the CR's defaults (for example `maxCheckAttempts` is 2 in Mackerel but the CR omits the field, so the operator defaults it to 1), the adoption path will report `OwnershipLost` instead of adopting the monitor. Resolve this by setting the field explicitly in the CR to match what Mackerel currently holds, applying the CR, and then letting the operator adopt and manage the monitor normally.
 
 ## Development
 

@@ -51,6 +51,20 @@ type ExternalMonitorSpec struct {
 	CertificationExpirationWarning *int `json:"certificationExpirationWarning,omitempty"`
 	// +kubebuilder:validation:Minimum=0
 	CertificationExpirationCritical *int `json:"certificationExpirationCritical,omitempty"`
+	// +kubebuilder:default=false
+	IsMute bool `json:"isMute,omitempty"`
+	// +kubebuilder:default=false
+	FollowRedirect bool `json:"followRedirect,omitempty"`
+	// +kubebuilder:default=false
+	SkipCertificateVerification bool `json:"skipCertificateVerification,omitempty"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=10
+	// +kubebuilder:default=1
+	MaxCheckAttempts int    `json:"maxCheckAttempts,omitempty"`
+	RequestBody      string `json:"requestBody,omitempty"`
+	// +listType=map
+	// +listMapKey=name
+	Headers []HeaderField `json:"headers,omitempty"`
 	// +kubebuilder:validation:MaxLength=1900
 	Memo string `json:"memo,omitempty"`
 }
@@ -97,6 +111,22 @@ type ExternalMonitorList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []ExternalMonitor `json:"items"`
+}
+
+// HeaderField is an HTTP request header sent by the external monitor.
+type HeaderField struct {
+	// name is the header name. The character set is the RFC 7230 token set
+	// minus the backtick, which no real header name uses and which would
+	// otherwise force the pattern out of a raw string literal.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=256
+	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9!#$%&'*+.^_|~-]+$`
+	Name string `json:"name"`
+	// value is the header value sent verbatim. It is stored in plain text in
+	// the cluster, so avoid credentials until Secret references are supported.
+	// +kubebuilder:validation:Required
+	Value string `json:"value"`
 }
 
 func init() {

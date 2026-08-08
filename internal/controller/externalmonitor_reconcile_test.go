@@ -209,11 +209,13 @@ func TestExternalMonitorReconciler_ReconcileRestoresMarker(t *testing.T) {
 		Build()
 	provider := newFakeExternalMonitorProvider()
 	provider.monitors["mon-1"] = monitor.ActualExternalMonitor{
-		ID:     "mon-1",
-		Name:   "default/api-health",
-		URL:    "https://example.com/healthz",
-		Method: "GET",
-		Memo:   "human memo",
+		ID:               "mon-1",
+		Name:             "default/api-health",
+		URL:              "https://example.com/healthz",
+		Method:           "GET",
+		MaxCheckAttempts: 1,
+		Headers:          []monitor.HeaderField{},
+		Memo:             "human memo",
 	}
 	reconciler := &ExternalMonitorReconciler{
 		Client:     k8sClient,
@@ -675,6 +677,12 @@ func actualFromDesired(id string, desired monitor.DesiredExternalMonitor, memo s
 		ResponseTimeCritical:            desired.ResponseTimeCritical,
 		CertificationExpirationWarning:  desired.CertificationExpirationWarning,
 		CertificationExpirationCritical: desired.CertificationExpirationCritical,
+		IsMute:                          desired.IsMute,
+		FollowRedirect:                  desired.FollowRedirect,
+		SkipCertificateVerification:     desired.SkipCertificateVerification,
+		MaxCheckAttempts:                desired.MaxCheckAttempts,
+		RequestBody:                     desired.RequestBody,
+		Headers:                         desired.Headers,
 		Memo:                            memo,
 	}
 }
