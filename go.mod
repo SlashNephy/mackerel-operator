@@ -3,7 +3,7 @@ module github.com/SlashNephy/mackerel-operator
 go 1.26.2
 
 require (
-	github.com/mackerelio/mackerel-client-go v0.45.0
+	github.com/mackerelio/mackerel-client-go v0.45.1
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/stretchr/testify v1.11.1
