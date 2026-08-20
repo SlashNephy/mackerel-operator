@@ -25,6 +25,7 @@ import (
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -50,6 +51,10 @@ const (
 // ExternalMonitorReconciler reconciles a ExternalMonitor object
 type ExternalMonitorReconciler struct {
 	client.Client
+	// APIReader reads past the informer cache. It is only used to refresh a resource
+	// after a conflict, where a cached read may still return the very version that
+	// caused it. Falls back to Client when nil.
+	APIReader  client.Reader
 	Scheme     *runtime.Scheme
 	Provider   provider.ExternalMonitorProvider
 	OwnerID    string
@@ -150,9 +155,12 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	case planner.ActionNoop:
 		synced = actual
 	case planner.ActionOwnershipLost:
-		return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.patchStatus(ctx, cr, func() {
+		if err := r.patchStatus(ctx, cr, func() {
 			operatorstatus.MarkOwnershipLost(cr, decision.Reason)
-		})
+		}); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: defaultRequeueAfter}, nil
 	default:
 		return ctrl.Result{}, fmt.Errorf("unsupported planner action: %s", decision.Action)
 	}
@@ -172,7 +180,9 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, fmt.Errorf("provider returned nil external monitor")
 	}
 
-	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.patchStatus(ctx, cr, func() {
+	// RequeueAfter is ignored whenever the error is non-nil, so the two must not be
+	// returned together: controller-runtime logs a warning for that combination.
+	if err := r.patchStatus(ctx, cr, func() {
 		operatorstatus.MarkReady(cr, operatorstatus.SyncResult{
 			MonitorID: synced.ID,
 			Hash:      desired.Hash,
@@ -180,7 +190,11 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			Name:      synced.Name,
 			Applied:   applied,
 		})
-	})
+	}); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return ctrl.Result{RequeueAfter: defaultRequeueAfter}, nil
 }
 
 // patchStatus applies mark to cr and persists only the resulting status diff as a
@@ -208,20 +222,47 @@ func (r *ExternalMonitorReconciler) addFinalizer(ctx context.Context, cr *macker
 }
 
 func (r *ExternalMonitorReconciler) removeFinalizer(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor) error {
-	return r.patchFinalizers(ctx, cr, func() {
+	// A resource that has already vanished carries no finalizer, which is the goal here.
+	// The same tolerance must not be granted to addFinalizer: continuing to reconcile a
+	// resource that no longer exists would leave a monitor behind in Mackerel.
+	return client.IgnoreNotFound(r.patchFinalizers(ctx, cr, func() {
 		controllerutil.RemoveFinalizer(cr, externalMonitorFinalizer)
-	})
+	}))
 }
 
 // patchFinalizers persists a finalizer change as a minimal patch instead of sending
 // the whole object. The optimistic lock is deliberate: a merge patch replaces
 // metadata.finalizers wholesale, so without it a finalizer added concurrently by
-// another controller would be dropped. Conflicts here are rare because the patch is
-// issued right after the initial Get, and they are resolved by the next reconciliation.
+// another controller would be dropped.
+//
+// That lock also means the patch is rejected once the resourceVersion read at the
+// beginning of Reconcile has moved on. On the deletion path the provider call sits
+// between that read and this write, so the window is wide enough to matter. Conflicts
+// are therefore resolved here rather than deferred to the next reconciliation: the
+// resource is re-read past the cache, which could otherwise hand back the very version
+// that just lost, and the patch is rebuilt on top of the current one. mutate must stay
+// idempotent because it is replayed on every attempt.
 func (r *ExternalMonitorReconciler) patchFinalizers(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor, mutate func()) error {
-	patch := client.MergeFromWithOptions(cr.DeepCopy(), client.MergeFromWithOptimisticLock{})
-	mutate()
-	return r.Patch(ctx, cr, patch)
+	var attempted bool
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if attempted {
+			if err := r.apiReader().Get(ctx, client.ObjectKeyFromObject(cr), cr); err != nil {
+				return err
+			}
+		}
+		attempted = true
+
+		patch := client.MergeFromWithOptions(cr.DeepCopy(), client.MergeFromWithOptimisticLock{})
+		mutate()
+		return r.Patch(ctx, cr, patch)
+	})
+}
+
+func (r *ExternalMonitorReconciler) apiReader() client.Reader {
+	if r.APIReader == nil {
+		return r.Client
+	}
+	return r.APIReader
 }
 
 // SetupWithManager sets up the controller with the Manager.
