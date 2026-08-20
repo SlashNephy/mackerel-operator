@@ -91,7 +91,20 @@ func actualMatchesDesired(desired monitor.DesiredExternalMonitor, actual monitor
 		desired.MaxCheckAttempts == actual.MaxCheckAttempts &&
 		desired.RequestBody == actual.RequestBody &&
 		monitor.NormalizeDualstack(desired.Dualstack) == monitor.NormalizeDualstack(actual.Dualstack) &&
-		headersMatch(desired.Headers, actual.Headers)
+		headersInSync(desired.Headers, actual.Headers)
+}
+
+// headersInSync reports whether the live headers satisfy the desired state.
+// Nil desired headers mean the CR does not manage headers, so whatever
+// Mackerel holds - including the Cache-Control: no-cache it injects on
+// creation - is in sync by definition. Comparing it against an empty list
+// instead would report drift on every reconcile.
+func headersInSync(desired *[]monitor.HeaderField, actual []monitor.HeaderField) bool {
+	if desired == nil {
+		return true
+	}
+
+	return headersMatch(*desired, actual)
 }
 
 // headersMatch compares headers as an unordered set keyed by name. Mackerel

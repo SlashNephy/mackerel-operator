@@ -80,6 +80,12 @@ spec:
                 default: false
                 type: boolean
               headers:
+                description: |-
+                  headers are the HTTP request headers the monitor sends.
+                  Omitting the field leaves headers to Mackerel, which injects
+                  Cache-Control: no-cache into external monitors it creates; the operator
+                  then neither writes nor reconciles them. An explicit empty list removes
+                  every header, including that default.
                 items:
                   description: HeaderField is an HTTP request header sent by the external
                     monitor.

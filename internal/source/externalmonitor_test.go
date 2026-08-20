@@ -169,10 +169,10 @@ func TestExternalMonitorSourceMapsRemainingFields(t *testing.T) {
 			MaxCheckAttempts:            3,
 			RequestBody:                 `{"ping":true}`,
 			Dualstack:                   "auto",
-			Headers: []mackerelv1alpha1.HeaderField{
+			Headers: new([]mackerelv1alpha1.HeaderField{
 				{Name: "X-Zebra", Value: new("last")},
 				{Name: "Authorization", Value: new("Bearer token")},
-			},
+			}),
 		},
 	}
 
@@ -186,10 +186,11 @@ func TestExternalMonitorSourceMapsRemainingFields(t *testing.T) {
 	assert.Equal(t, 3, got.MaxCheckAttempts)
 	assert.Equal(t, `{"ping":true}`, got.RequestBody)
 	assert.Equal(t, "auto", got.Dualstack)
+	require.NotNil(t, got.Headers)
 	assert.Equal(t, []monitor.HeaderField{
 		{Name: "Authorization", Value: "Bearer token"},
 		{Name: "X-Zebra", Value: "last"},
-	}, got.Headers, "headers must be sorted by name so drift detection is order-insensitive")
+	}, *got.Headers, "headers must be sorted by name so drift detection is order-insensitive")
 }
 
 func TestExternalMonitorSourceNormalisesMaxCheckAttempts(t *testing.T) {
@@ -225,9 +226,12 @@ func TestExternalMonitorSourceNormalisesMaxCheckAttempts(t *testing.T) {
 	}
 }
 
-func TestExternalMonitorSourceEmitsEmptyHeadersSlice(t *testing.T) {
+func TestExternalMonitorSourceLeavesHeadersUnmanagedWhenAbsent(t *testing.T) {
 	t.Parallel()
 
+	// Mackerel injects Cache-Control: no-cache into external monitors it
+	// creates. A CR that says nothing about headers must not erase it, so the
+	// desired state carries nil rather than an empty list.
 	cr := &mackerelv1alpha1.ExternalMonitor{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
 		Spec: mackerelv1alpha1.ExternalMonitorSpec{
@@ -239,16 +243,30 @@ func TestExternalMonitorSourceEmitsEmptyHeadersSlice(t *testing.T) {
 	got, err := src.FromExternalMonitor(cr)
 	require.NoError(t, err)
 
-	assert.NotNil(t, got.Headers, "prefer an empty slice over nil")
-	assert.Empty(t, got.Headers)
+	assert.Nil(t, got.Headers, "absent headers mean the operator does not manage them")
 }
 
-// TestExternalMonitorSourceLeavesDualstackUnset pins the deliberate asymmetry
-// with maxCheckAttempts: an unset dualstack is *not* widened to ipv4 here.
-// Materialising the default would put the key into the desired JSON and change
-// the hash of every ExternalMonitor that predates the field, forcing an Update
-// on upgrade. The ipv4 semantics are applied in the planner and the provider
-// instead.
+func TestExternalMonitorSourceKeepsExplicitEmptyHeaders(t *testing.T) {
+	t.Parallel()
+
+	// An explicit empty list is the way to say "remove every header", so it
+	// must survive as a non-nil empty slice all the way to the provider.
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL:     "https://api.example.com/healthz",
+			Headers: new([]mackerelv1alpha1.HeaderField{}),
+		},
+	}
+
+	src := ExternalMonitorSource{OwnerID: "prod", HashLength: 7}
+	got, err := src.FromExternalMonitor(cr)
+	require.NoError(t, err)
+
+	require.NotNil(t, got.Headers)
+	assert.Empty(t, *got.Headers)
+}
+
 func TestExternalMonitorSourceLeavesDualstackUnset(t *testing.T) {
 	t.Parallel()
 
@@ -332,7 +350,7 @@ func TestExternalMonitorSourceResolvesHeaderValues(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
 				Spec: mackerelv1alpha1.ExternalMonitorSpec{
 					URL:     "https://api.example.com/healthz",
-					Headers: tt.headers,
+					Headers: &tt.headers,
 				},
 			}
 
@@ -344,7 +362,8 @@ func TestExternalMonitorSourceResolvesHeaderValues(t *testing.T) {
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.want, got.Headers)
+			require.NotNil(t, got.Headers)
+			assert.Equal(t, tt.want, *got.Headers)
 		})
 	}
 }
@@ -356,12 +375,12 @@ func TestExternalMonitorSourceHashesResolvedHeaderValues(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
 		Spec: mackerelv1alpha1.ExternalMonitorSpec{
 			URL: "https://api.example.com/healthz",
-			Headers: []mackerelv1alpha1.HeaderField{{
+			Headers: new([]mackerelv1alpha1.HeaderField{{
 				Name: "Authorization",
 				ValueFrom: &mackerelv1alpha1.HeaderValueSource{
 					SecretKeyRef: &mackerelv1alpha1.SecretKeySelector{Name: "api-credentials", Key: "token"},
 				},
-			}},
+			}}),
 		},
 	}
 

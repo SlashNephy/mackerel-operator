@@ -29,12 +29,12 @@ func secretBackedExternalMonitor(finalizers ...string) *mackerelv1alpha1.Externa
 		},
 		Spec: mackerelv1alpha1.ExternalMonitorSpec{
 			URL: "https://example.com/healthz",
-			Headers: []mackerelv1alpha1.HeaderField{{
+			Headers: new([]mackerelv1alpha1.HeaderField{{
 				Name: "Authorization",
 				ValueFrom: &mackerelv1alpha1.HeaderValueSource{
 					SecretKeyRef: &mackerelv1alpha1.SecretKeySelector{Name: "api-credentials", Key: "token"},
 				},
-			}},
+			}}),
 		},
 	}
 }
@@ -70,7 +70,8 @@ func TestExternalMonitorReconciler_ReconcileResolvesSecretBackedHeader(t *testin
 
 	require.NoError(t, err)
 	require.Len(t, provider.created, 1)
-	assert.Equal(t, []monitor.HeaderField{{Name: "Authorization", Value: "Bearer token"}}, provider.created[0].Headers)
+	require.NotNil(t, provider.created[0].Headers)
+	assert.Equal(t, []monitor.HeaderField{{Name: "Authorization", Value: "Bearer token"}}, *provider.created[0].Headers)
 
 	synced := &mackerelv1alpha1.ExternalMonitor{}
 	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), synced))
@@ -172,7 +173,7 @@ func TestExternalMonitorReconciler_ReconcileUpdatesRotatedSecretValue(t *testing
 		Resource: previous.Resource,
 		Owner:    previous.Owner,
 		Hash:     previous.Hash,
-	}))
+	}), mackerelDefaultHeaders())
 
 	reconciler := &ExternalMonitorReconciler{
 		Client:     k8sClient,
@@ -189,7 +190,8 @@ func TestExternalMonitorReconciler_ReconcileUpdatesRotatedSecretValue(t *testing
 
 	require.NoError(t, err)
 	require.Len(t, provider.updated, 1)
-	assert.Equal(t, []monitor.HeaderField{{Name: "Authorization", Value: "Bearer rotated"}}, provider.updated[0].Headers)
+	require.NotNil(t, provider.updated[0].Headers)
+	assert.Equal(t, []monitor.HeaderField{{Name: "Authorization", Value: "Bearer rotated"}}, *provider.updated[0].Headers)
 }
 
 func TestExternalMonitorReconciler_ReconcileDeletesMonitorWhenSecretIsAlreadyGone(t *testing.T) {
@@ -245,7 +247,7 @@ func TestExternalMonitorReconciler_ExternalMonitorsForSecret(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "inline", Namespace: "default"},
 		Spec: mackerelv1alpha1.ExternalMonitorSpec{
 			URL:     "https://example.com/healthz",
-			Headers: []mackerelv1alpha1.HeaderField{{Name: "X-Request-Source", Value: new("mackerel-operator")}},
+			Headers: new([]mackerelv1alpha1.HeaderField{{Name: "X-Request-Source", Value: new("mackerel-operator")}}),
 		},
 	}
 	k8sClient := fake.NewClientBuilder().

@@ -228,7 +228,7 @@ func TestPlanDetectsDriftOnRemainingFields(t *testing.T) {
 			Name:             "api",
 			URL:              "https://example.com",
 			MaxCheckAttempts: 1,
-			Headers:          []monitor.HeaderField{{Name: "Authorization", Value: "Bearer token"}},
+			Headers:          new([]monitor.HeaderField{{Name: "Authorization", Value: "Bearer token"}}),
 			Owner:            owner,
 			Resource:         resource,
 			Hash:             hash,
@@ -306,10 +306,10 @@ func TestPlanIgnoresHeaderOrder(t *testing.T) {
 		Name:             "api",
 		URL:              "https://example.com",
 		MaxCheckAttempts: 1,
-		Headers: []monitor.HeaderField{
+		Headers: new([]monitor.HeaderField{
 			{Name: "Authorization", Value: "Bearer token"},
 			{Name: "X-Zebra", Value: "last"},
-		},
+		}),
 		Owner:    owner,
 		Resource: resource,
 		Hash:     hash,
@@ -386,4 +386,71 @@ func TestPlanNoopWhenDualstackMatchesAcrossRepresentations(t *testing.T) {
 			assert.Equal(t, tt.want, decision.Action, decision.Reason)
 		})
 	}
+}
+
+func TestPlanTreatsAbsentHeadersAsUnmanaged(t *testing.T) {
+	t.Parallel()
+
+	const (
+		owner    = "prod"
+		resource = "externalmonitor/default/api"
+		hash     = "deadbee"
+	)
+
+	// A CR that does not declare headers leaves them to Mackerel, which injects
+	// Cache-Control: no-cache on creation. Comparing that default against an
+	// empty desired list would report drift on every reconcile and rewrite the
+	// monitor forever.
+	desired := monitor.DesiredExternalMonitor{
+		Name:             "api",
+		URL:              "https://example.com",
+		MaxCheckAttempts: 1,
+		Owner:            owner,
+		Resource:         resource,
+		Hash:             hash,
+	}
+	actual := monitor.ActualExternalMonitor{
+		ID:               "mon-1",
+		Name:             "api",
+		URL:              "https://example.com",
+		MaxCheckAttempts: 1,
+		Headers:          []monitor.HeaderField{{Name: "Cache-Control", Value: "no-cache"}},
+		Memo:             ownership.BuildMarker(ownership.Marker{Resource: resource, Owner: owner, Hash: hash}),
+	}
+
+	decision := Plan(PlanInput{Desired: desired, Actual: &actual})
+	assert.Equal(t, ActionNoop, decision.Action, decision.Reason)
+}
+
+func TestPlanDetectsDriftWhenExplicitEmptyHeadersAreNotApplied(t *testing.T) {
+	t.Parallel()
+
+	const (
+		owner    = "prod"
+		resource = "externalmonitor/default/api"
+		hash     = "deadbee"
+	)
+
+	// "Remove every header" stays expressible: an explicit empty list must
+	// still be compared, so a monitor that kept its headers reports drift.
+	desired := monitor.DesiredExternalMonitor{
+		Name:             "api",
+		URL:              "https://example.com",
+		MaxCheckAttempts: 1,
+		Headers:          new([]monitor.HeaderField{}),
+		Owner:            owner,
+		Resource:         resource,
+		Hash:             hash,
+	}
+	actual := monitor.ActualExternalMonitor{
+		ID:               "mon-1",
+		Name:             "api",
+		URL:              "https://example.com",
+		MaxCheckAttempts: 1,
+		Headers:          []monitor.HeaderField{{Name: "Cache-Control", Value: "no-cache"}},
+		Memo:             ownership.BuildMarker(ownership.Marker{Resource: resource, Owner: owner, Hash: hash}),
+	}
+
+	decision := Plan(PlanInput{Desired: desired, Actual: &actual})
+	assert.Equal(t, ActionUpdate, decision.Action, decision.Reason)
 }

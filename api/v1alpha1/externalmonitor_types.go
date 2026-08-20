@@ -69,9 +69,14 @@ type ExternalMonitorSpec struct {
 	// change its desired-state hash, forcing an Update on upgrade.
 	// +kubebuilder:validation:Enum=ipv4;ipv6;auto
 	Dualstack string `json:"dualstack,omitempty"`
+	// headers are the HTTP request headers the monitor sends.
+	// Omitting the field leaves headers to Mackerel, which injects
+	// Cache-Control: no-cache into external monitors it creates; the operator
+	// then neither writes nor reconciles them. An explicit empty list removes
+	// every header, including that default.
 	// +listType=map
 	// +listMapKey=name
-	Headers []HeaderField `json:"headers,omitempty"`
+	Headers *[]HeaderField `json:"headers,omitempty"`
 	// +kubebuilder:validation:MaxLength=1900
 	Memo string `json:"memo,omitempty"`
 }

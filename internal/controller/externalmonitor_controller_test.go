@@ -99,7 +99,7 @@ var _ = Describe("ExternalMonitor Controller", func() {
 				},
 				Spec: mackerelv1alpha1.ExternalMonitorSpec{
 					URL:     "https://example.com/healthz",
-					Headers: []mackerelv1alpha1.HeaderField{header},
+					Headers: new([]mackerelv1alpha1.HeaderField{header}),
 				},
 			}
 		}

@@ -33,12 +33,16 @@ type DesiredExternalMonitor struct {
 	// ExternalMonitor that never sets it. The ipv4 semantics of an empty value
 	// are applied downstream, in the planner comparison and the provider
 	// payload, rather than being materialised here.
-	Dualstack string        `json:"dualstack,omitempty"`
-	Headers   []HeaderField `json:"headers,omitempty"`
-	Memo      string        `json:"memo,omitempty"`
-	Resource  string        `json:"resource"`
-	Owner     string        `json:"owner"`
-	Hash      string        `json:"hash,omitempty"`
+	Dualstack string `json:"dualstack,omitempty"`
+	// Headers is nil when the CR does not declare headers, which means the
+	// operator leaves them to Mackerel. A non-nil empty slice means "remove
+	// every header". The pointer keeps the two apart in the desired hash,
+	// where omitempty would otherwise drop both.
+	Headers  *[]HeaderField `json:"headers,omitempty"`
+	Memo     string         `json:"memo,omitempty"`
+	Resource string         `json:"resource"`
+	Owner    string         `json:"owner"`
+	Hash     string         `json:"hash,omitempty"`
 }
 
 type ActualExternalMonitor struct {
