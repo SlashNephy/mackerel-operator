@@ -571,6 +571,67 @@ func TestExternalMonitorReconciler_ReconcileDelete(t *testing.T) {
 	}
 }
 
+func TestExternalMonitorReconciler_ReconcileDeleteSurvivesConcurrentMetadataUpdate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	scheme := newExternalMonitorTestScheme(t)
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "api-health",
+			Namespace:  "default",
+			Finalizers: []string{externalMonitorFinalizer},
+		},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL: "https://example.com/healthz",
+		},
+	}
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(cr).
+		WithStatusSubresource(&mackerelv1alpha1.ExternalMonitor{}).
+		Build()
+	provider := newFakeExternalMonitorProvider()
+	provider.monitors["mon-1"] = monitor.ActualExternalMonitor{
+		ID:     "mon-1",
+		Name:   "default/api-health",
+		URL:    "https://example.com/healthz",
+		Method: "GET",
+		Memo: ownership.BuildMarker(ownership.Marker{
+			Resource: "externalmonitor/default/api-health",
+			Owner:    "prod",
+			Hash:     "oldhash",
+		}),
+	}
+	// Someone labels the resource while the reconciler is deleting the monitor in
+	// Mackerel, which bumps the resourceVersion read at the beginning of Reconcile.
+	provider.beforeDelete = func() {
+		concurrent := &mackerelv1alpha1.ExternalMonitor{}
+		require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), concurrent))
+		concurrent.Labels = map[string]string{"edited-by": "someone-else"}
+		require.NoError(t, k8sClient.Update(ctx, concurrent))
+	}
+	reconciler := &ExternalMonitorReconciler{
+		Client:     k8sClient,
+		Scheme:     scheme,
+		Provider:   provider,
+		OwnerID:    "prod",
+		Policy:     "sync",
+		HashLength: 7,
+	}
+	require.NoError(t, k8sClient.Delete(ctx, cr))
+
+	_, err := reconciler.Reconcile(ctx, reconcile.Request{
+		NamespacedName: types.NamespacedName{Name: "api-health", Namespace: "default"},
+	})
+
+	require.NoError(t, err)
+	assert.True(t, provider.deleted["mon-1"])
+	// The finalizer removal must have landed, so the resource is gone for good.
+	err = k8sClient.Get(ctx, client.ObjectKeyFromObject(cr), &mackerelv1alpha1.ExternalMonitor{})
+	assert.True(t, apierrors.IsNotFound(err), "expected the resource to be deleted, got %v", err)
+}
+
 func newExternalMonitorTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 
@@ -593,6 +654,8 @@ type fakeExternalMonitorProvider struct {
 	// beforeCreate runs while the provider call is in flight, so tests can simulate
 	// another writer touching the resource during that window.
 	beforeCreate func()
+	// beforeDelete plays the same role for the deletion path.
+	beforeDelete func()
 }
 
 func newFakeExternalMonitorProvider() *fakeExternalMonitorProvider {
@@ -658,6 +721,10 @@ func (p *fakeExternalMonitorProvider) UpdateExternalMonitor(_ context.Context, i
 }
 
 func (p *fakeExternalMonitorProvider) DeleteExternalMonitor(_ context.Context, id string) error {
+	if p.beforeDelete != nil {
+		p.beforeDelete()
+	}
+
 	p.deleted[id] = true
 	delete(p.monitors, id)
 	return nil

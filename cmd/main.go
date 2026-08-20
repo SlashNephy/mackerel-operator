@@ -203,6 +203,7 @@ func main() {
 
 	if err := (&controller.ExternalMonitorReconciler{
 		Client:     mgr.GetClient(),
+		APIReader:  mgr.GetAPIReader(),
 		Scheme:     mgr.GetScheme(),
 		Provider:   mackerelProvider,
 		OwnerID:    ownerID,
