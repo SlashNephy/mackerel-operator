@@ -176,7 +176,3 @@ type SecretKeySelector struct {
 	// +kubebuilder:validation:MaxLength=253
 	Key string `json:"key"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ExternalMonitor{}, &ExternalMonitorList{})
-}
