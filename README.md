@@ -65,6 +65,23 @@ retry), `ipv6` (no IPv4 retry), or `auto` (IPv6 first, then IPv4). Omitting the
 field behaves as `ipv4`, which is what Mackerel applies to a monitor that never
 set it.
 
+### How `headers` handles being unset
+
+`headers` is the one field where "omitted" and "empty" mean different things.
+
+- **Omitted.** The operator does not manage headers at all. It neither writes
+  nor reconciles them, so whatever Mackerel holds stays. This matters because
+  Mackerel adds `Cache-Control: no-cache` to every external monitor it creates,
+  which stops a CDN or reverse proxy from answering the check with a cached
+  `200`.
+- **`headers: []`.** Remove every header, including that default.
+- **A non-empty list.** The operator owns the headers and replaces whatever is
+  live with exactly the list in the CR.
+
+Every other field in the spec resets to its default when omitted. `headers` is
+the exception because the default it would otherwise destroy exists to keep the
+monitor honest.
+
 ### Header values from a Secret
 
 A header value written as `value` is stored in plain text in the CR and in etcd,
@@ -115,6 +132,27 @@ The other change to be aware of is monitor adoption. Before this release, the op
 **Before upgrading**, add `dualstack` to any `ExternalMonitor` whose monitor was switched to IPv6 or auto in the Mackerel web UI. Otherwise the next reconcile resets that monitor to IPv4, and a URL that only resolves over IPv6 starts failing its check.
 
 Adding the field does not change the desired-state hash of an `ExternalMonitor` that omits it, so unlike the `maxCheckAttempts` default this upgrade does not by itself cause an Update on every resource. Monitor adoption follows the same rule as the other fields: a name-matched, marker-less monitor set to IPv6 is only adopted if the CR spells out `dualstack: ipv6`.
+
+### Restoring `Cache-Control: no-cache` after 0.2.0
+
+Version 0.2.0 sent an explicit empty header list for any `ExternalMonitor` that
+did not declare `headers`, which removed the `Cache-Control: no-cache` that
+Mackerel had added when the monitor was created. Upgrading past 0.2.0 stops the
+deletion, but it does not put the header back: Mackerel only injects it when the
+monitor is created, and the operator no longer touches headers a CR does not
+declare.
+
+If a monitor lost the header while running 0.2.0, restore it explicitly:
+
+```yaml
+spec:
+  headers:
+    - name: Cache-Control
+      value: no-cache
+```
+
+To check which monitors are affected, look for external monitors with no headers
+in the Mackerel web UI or via `GET /api/v0/monitors`.
 
 ## Development
 

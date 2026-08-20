@@ -130,7 +130,6 @@ func TestHashDesiredIgnoresZeroValuedNewFields(t *testing.T) {
 	withZeroValues.MaxCheckAttempts = 0
 	withZeroValues.RequestBody = ""
 	withZeroValues.Dualstack = ""
-	withZeroValues.Headers = []HeaderField{}
 
 	baseHash, err := HashDesired(base, 12)
 	require.NoError(t, err)
@@ -163,7 +162,7 @@ func TestHashDesiredChangesWhenNewFieldsAreSet(t *testing.T) {
 		{name: "requestBody", mutate: func(d *DesiredExternalMonitor) { d.RequestBody = `{"ping":true}` }},
 		{name: "dualstack", mutate: func(d *DesiredExternalMonitor) { d.Dualstack = "ipv6" }},
 		{name: "headers", mutate: func(d *DesiredExternalMonitor) {
-			d.Headers = []HeaderField{{Name: "Authorization", Value: "Bearer token"}}
+			d.Headers = new([]HeaderField{{Name: "Authorization", Value: "Bearer token"}})
 		}},
 	}
 
@@ -179,4 +178,32 @@ func TestHashDesiredChangesWhenNewFieldsAreSet(t *testing.T) {
 			assert.NotEqual(t, baseHash, got)
 		})
 	}
+}
+
+func TestHashDesiredDistinguishesAbsentFromEmptyHeaders(t *testing.T) {
+	t.Parallel()
+
+	// Absent headers mean "the operator does not manage headers"; an explicit
+	// empty list means "remove every header". Those are different desired
+	// states, so they must not collapse to the same hash: a CR edited from one
+	// to the other has to be detected as a change.
+	base := DesiredExternalMonitor{
+		Name:   "API health check",
+		URL:    "https://api.example.com/healthz",
+		Method: "GET",
+	}
+
+	absent := base
+	absent.Headers = nil
+
+	empty := base
+	empty.Headers = new([]HeaderField{})
+
+	absentHash, err := HashDesired(absent, 12)
+	require.NoError(t, err)
+
+	emptyHash, err := HashDesired(empty, 12)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, absentHash, emptyHash)
 }

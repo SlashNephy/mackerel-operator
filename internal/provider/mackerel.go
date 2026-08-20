@@ -197,7 +197,13 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	merged.MaxCheckAttempts = maxCheckAttempts
 	merged.RequestBody = desired.RequestBody
 	merged.Dualstack = dualstackToMackerel(desired.Dualstack)
-	merged.Headers = headerFieldsToMackerel(desired.Headers)
+	// Nil means the CR does not manage headers. Leaving the field as copied
+	// from base echoes the live headers back on update, and sends
+	// "headers": null on create - which the API treats like an absent key,
+	// so Mackerel applies its own default.
+	if desired.Headers != nil {
+		merged.Headers = headerFieldsToMackerel(*desired.Headers)
+	}
 
 	return &merged, nil
 }

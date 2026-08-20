@@ -65,6 +65,10 @@ Header order is **preserved as sent**, not normalised by Mackerel. Headers submi
 
 **Mackerel does not normalise header name casing.** `X-Foo-Bar` is echoed back verbatim as submitted. The operator does not need to normalise header names before comparing or sending them.
 
+**Mackerel injects `Cache-Control: no-cache` into every external monitor it creates.** A `POST` with no `headers` key comes back with `"headers":[{"name":"Cache-Control","value":"no-cache"}]`. This was missed when this design was written — the verification exercised header round-tripping and clearing, but never created a monitor without a `headers` key — and shipping "unspecified means empty" silently deleted that default from existing monitors. See #323.
+
+**An explicit `"headers": null` is treated exactly like an absent key**, on both `POST` and `PUT`, verified on 2026-08-20. On create, Mackerel applies its default; on update, the live headers are preserved. Only `"headers": []` clears them. `headers` is therefore the one field where absent and empty must stay distinct, which is why `Spec.Headers` is `*[]HeaderField` and nil means "not managed by the operator".
+
 `requestBody`, `isMute`, `followRedirect`, `skipCertificateVerification`, and `maxCheckAttempts` all appear in read responses, so each is usable for drift detection.
 
 ## Layer Changes
@@ -87,6 +91,8 @@ Mackerel replaces the whole monitor on update and returns a normalised represent
 ## Backward Compatibility
 
 `HashDesired` marshals `DesiredExternalMonitor` to JSON, so a new field tagged `omitempty` and left at its zero value does not change the hash. The three booleans, `requestBody`, and `headers` are therefore invisible to existing monitors. This holds for headers whether the source layer emits nil or an empty slice, since `omitempty` drops both; the repository convention of preferring empty slices over nil is kept.
+
+> **Superseded by #323.** Collapsing nil and empty is exactly what made "not managed" and "remove every header" indistinguishable. `Headers` is now `*[]HeaderField` on both the CRD and the desired model, so `omitempty` drops only nil and an explicit empty list serialises as `"headers":[]`, giving the two states different hashes.
 
 `maxCheckAttempts` is the exception. Defaulting it to `1` makes `"maxCheckAttempts":1` appear in the marshalled desired state, changing the hash of every existing `ExternalMonitor`. Each one will take a single `Update` on its next reconcile.
 

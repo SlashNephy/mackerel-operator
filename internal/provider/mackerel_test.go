@@ -47,9 +47,9 @@ func TestMergeMackerelExternalMonitorOwnsManagedFields(t *testing.T) {
 		SkipCertificateVerification:     false,
 		MaxCheckAttempts:                2,
 		RequestBody:                     `{"ping":true}`,
-		Headers: []monitor.HeaderField{
+		Headers: new([]monitor.HeaderField{
 			{Name: "Authorization", Value: "Bearer token"},
-		},
+		}),
 	}
 
 	got, err := mergeMackerelExternalMonitor(base, desired, "human memo")
@@ -89,7 +89,7 @@ func TestMergeMackerelExternalMonitorClearsHeadersWithEmptySlice(t *testing.T) {
 		Name:    "API health",
 		URL:     "https://api.example.com/healthz",
 		Method:  "GET",
-		Headers: []monitor.HeaderField{},
+		Headers: new([]monitor.HeaderField{}),
 	}
 
 	got, err := mergeMackerelExternalMonitor(base, desired, "")
@@ -248,4 +248,46 @@ func TestActualExternalMonitorFromMackerelLeavesAbsentDualstackEmpty(t *testing.
 	})
 
 	assert.Empty(t, got.Dualstack)
+}
+
+func TestMergeMackerelExternalMonitorLeavesHeadersUntouchedWhenUnmanaged(t *testing.T) {
+	t.Parallel()
+
+	// Nil headers mean the CR says nothing about them. The live headers - which
+	// include the Cache-Control: no-cache that Mackerel injects on creation -
+	// must survive the update untouched.
+	base := &mackerel.MonitorExternalHTTP{
+		Headers: []mackerel.HeaderField{{Name: "Cache-Control", Value: "no-cache"}},
+	}
+	desired := monitor.DesiredExternalMonitor{
+		Name:   "API health",
+		URL:    "https://api.example.com/healthz",
+		Method: "GET",
+	}
+
+	got, err := mergeMackerelExternalMonitor(base, desired, "")
+	require.NoError(t, err)
+
+	assert.Equal(t, []mackerel.HeaderField{{Name: "Cache-Control", Value: "no-cache"}}, got.Headers)
+}
+
+func TestNewMackerelExternalMonitorOmitsHeadersWhenUnmanaged(t *testing.T) {
+	t.Parallel()
+
+	// On the create path there is nothing to preserve, so nil has to reach the
+	// wire as "headers": null. The live API treats that exactly like an absent
+	// key and applies its own default, verified against api.mackerelio.com on
+	// 2026-08-20.
+	got, err := newMackerelExternalMonitor(monitor.DesiredExternalMonitor{
+		Name:   "API health",
+		URL:    "https://api.example.com/healthz",
+		Method: "GET",
+	}, "")
+	require.NoError(t, err)
+
+	assert.Nil(t, got.Headers)
+
+	encoded, err := json.Marshal(got)
+	require.NoError(t, err)
+	assert.Contains(t, string(encoded), `"headers":null`)
 }

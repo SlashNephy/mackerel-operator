@@ -89,7 +89,8 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 }
 
 // sortedHeaders converts CRD headers to the intermediate model and orders them
-// by name. The primary purpose is hash determinism: the resulting slice feeds
+// by name. A nil input returns nil: the CR said nothing about headers, so the
+// operator leaves them to Mackerel rather than clearing them. The primary purpose is hash determinism: the resulting slice feeds
 // the desired-state hash, so the order must be stable across reconciles. The
 // CRD declares headers as a list-map, so the API server imposes no ordering,
 // and the same logical set of headers could arrive in any order. The planner
@@ -104,9 +105,13 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 // returns header values unmasked, so the short hash in the monitor memo tells a
 // reader nothing they could not already read from the API, and rotating a
 // Secret moves the hash instead of relying on the drift comparison alone.
-func (s ExternalMonitorSource) sortedHeaders(headers []mackerelv1alpha1.HeaderField) ([]monitor.HeaderField, error) {
-	sorted := make([]monitor.HeaderField, 0, len(headers))
-	for _, h := range headers {
+func (s ExternalMonitorSource) sortedHeaders(headers *[]mackerelv1alpha1.HeaderField) (*[]monitor.HeaderField, error) {
+	if headers == nil {
+		return nil, nil
+	}
+
+	sorted := make([]monitor.HeaderField, 0, len(*headers))
+	for _, h := range *headers {
 		value, ok, err := s.headerValue(&h)
 		if err != nil {
 			return nil, err
@@ -121,7 +126,7 @@ func (s ExternalMonitorSource) sortedHeaders(headers []mackerelv1alpha1.HeaderFi
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	return sorted, nil
+	return &sorted, nil
 }
 
 // headerValue reports the value to send for a single header. The second result

@@ -268,7 +268,7 @@ func TestExternalMonitorReconciler_ReconcileNoopsOwnedMonitor(t *testing.T) {
 		Resource: desired.Resource,
 		Owner:    desired.Owner,
 		Hash:     desired.Hash,
-	}))
+	}), mackerelDefaultHeaders())
 	reconciler := &ExternalMonitorReconciler{
 		Client:     k8sClient,
 		Scheme:     scheme,
@@ -703,7 +703,8 @@ func (p *fakeExternalMonitorProvider) CreateExternalMonitor(_ context.Context, d
 	p.created = append(p.created, desired)
 	p.createdMemo = append(p.createdMemo, memo)
 
-	actual := actualFromDesired("mon-1", desired, memo)
+	// Mackerel injects this header into every external monitor it creates.
+	actual := actualFromDesired("mon-1", desired, memo, mackerelDefaultHeaders())
 	p.monitors[actual.ID] = actual
 	return &actual, nil
 }
@@ -717,7 +718,7 @@ func (p *fakeExternalMonitorProvider) UpdateExternalMonitor(_ context.Context, i
 	p.updated = append(p.updated, desired)
 	p.updatedMemo = append(p.updatedMemo, memo)
 
-	actual := actualFromDesired(id, desired, memo)
+	actual := actualFromDesired(id, desired, memo, p.monitors[id].Headers)
 	p.monitors[id] = actual
 	return &actual, nil
 }
@@ -732,7 +733,22 @@ func (p *fakeExternalMonitorProvider) DeleteExternalMonitor(_ context.Context, i
 	return nil
 }
 
-func actualFromDesired(id string, desired monitor.DesiredExternalMonitor, memo string) monitor.ActualExternalMonitor {
+// mackerelDefaultHeaders is what the live API puts on an external monitor
+// created without a headers key, verified against api.mackerelio.com.
+func mackerelDefaultHeaders() []monitor.HeaderField {
+	return []monitor.HeaderField{{Name: "Cache-Control", Value: "no-cache"}}
+}
+
+// actualFromDesired echoes the desired state back as a live monitor. previous
+// is what the monitor already holds: desired headers of nil mean the operator
+// does not manage headers, so the live ones survive untouched, exactly as the
+// real API behaves for an absent or null headers key.
+func actualFromDesired(id string, desired monitor.DesiredExternalMonitor, memo string, previous []monitor.HeaderField) monitor.ActualExternalMonitor {
+	headers := previous
+	if desired.Headers != nil {
+		headers = *desired.Headers
+	}
+
 	return monitor.ActualExternalMonitor{
 		ID:                              id,
 		Name:                            desired.Name,
@@ -752,7 +768,7 @@ func actualFromDesired(id string, desired monitor.DesiredExternalMonitor, memo s
 		MaxCheckAttempts:                desired.MaxCheckAttempts,
 		RequestBody:                     desired.RequestBody,
 		Dualstack:                       monitor.NormalizeDualstack(desired.Dualstack),
-		Headers:                         desired.Headers,
+		Headers:                         headers,
 		Memo:                            memo,
 	}
 }

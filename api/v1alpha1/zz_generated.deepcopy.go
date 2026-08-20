@@ -124,9 +124,13 @@ func (in *ExternalMonitorSpec) DeepCopyInto(out *ExternalMonitorSpec) {
 	}
 	if in.Headers != nil {
 		in, out := &in.Headers, &out.Headers
-		*out = make([]HeaderField, len(*in))
-		for i := range *in {
-			(*in)[i].DeepCopyInto(&(*out)[i])
+		*out = new([]HeaderField)
+		if **in != nil {
+			in, out := *in, *out
+			*out = make([]HeaderField, len(*in))
+			for i := range *in {
+				(*in)[i].DeepCopyInto(&(*out)[i])
+			}
 		}
 	}
 }

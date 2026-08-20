@@ -48,11 +48,16 @@ var errSecretKeyMissing = errors.New("secret key not found")
 // operator's memory, while the reconciliation only needs the few keys a CR
 // actually references.
 func (r *ExternalMonitorReconciler) resolveHeaderValues(ctx context.Context, cr *mackerelv1alpha1.ExternalMonitor) (map[string]string, error) {
-	values := make(map[string]string, len(cr.Spec.Headers))
+	if cr.Spec.Headers == nil {
+		return map[string]string{}, nil
+	}
+
+	headers := *cr.Spec.Headers
+	values := make(map[string]string, len(headers))
 	secrets := make(map[string]*corev1.Secret)
 
-	for i := range cr.Spec.Headers {
-		header := &cr.Spec.Headers[i]
+	for i := range headers {
+		header := &headers[i]
 		if header.ValueFrom == nil {
 			continue
 		}
@@ -94,9 +99,14 @@ func isUnresolvableSecretRef(err error) bool {
 // header values from. It backs both the field index and the deduplication of
 // the Secret reads.
 func secretNamesForExternalMonitor(cr *mackerelv1alpha1.ExternalMonitor) []string {
-	names := make([]string, 0, len(cr.Spec.Headers))
-	for i := range cr.Spec.Headers {
-		header := &cr.Spec.Headers[i]
+	if cr.Spec.Headers == nil {
+		return nil
+	}
+
+	headers := *cr.Spec.Headers
+	names := make([]string, 0, len(headers))
+	for i := range headers {
+		header := &headers[i]
 		if header.ValueFrom == nil || header.ValueFrom.SecretKeyRef == nil {
 			continue
 		}
