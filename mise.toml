@@ -1,4 +1,4 @@
 [tools]
 go = "1.26.5"
-helm = "4.2.3"
+helm = "4.2.4"
 kubebuilder = "4.15.0"
