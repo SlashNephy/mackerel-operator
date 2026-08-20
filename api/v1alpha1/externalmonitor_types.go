@@ -128,7 +128,3 @@ type HeaderField struct {
 	// +kubebuilder:validation:Required
 	Value string `json:"value"`
 }
-
-func init() {
-	SchemeBuilder.Register(&ExternalMonitor{}, &ExternalMonitorList{})
-}
