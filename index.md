@@ -40,6 +40,7 @@ spec:
   followRedirect: true
   skipCertificateVerification: false
   maxCheckAttempts: 3
+  dualstack: ipv4
   headers:
     - name: X-Request-Source
       value: mackerel-operator
@@ -59,6 +60,11 @@ spec:
   requestBody: '{"query":"{ health }"}'
 ```
 
+`dualstack` selects the IP version used to reach the URL: `ipv4` (no IPv6
+retry), `ipv6` (no IPv4 retry), or `auto` (IPv6 first, then IPv4). Omitting the
+field behaves as `ipv4`, which is what Mackerel applies to a monitor that never
+set it.
+
 Header values are stored in plain text in the cluster and are returned unmasked
 by the Mackerel API. Avoid putting credentials in `headers` until Secret
 references are supported.
@@ -70,6 +76,14 @@ These six fields are now fully managed by the operator. **Before upgrading**, ch
 The most disruptive case is `isMute`. A monitor that was muted in the Mackerel web UI will be **unmuted automatically** on the first reconcile after the upgrade unless you add `isMute: true` to the CR before upgrading. Unmuting can cause alerts to fire immediately if the monitor is in a failing state.
 
 The other change to be aware of is monitor adoption. Before this release, the operator would adopt a name-matched, marker-less Mackerel monitor (one created in the UI before the operator was set up) even if that monitor had a non-default `maxCheckAttempts`, custom headers, or any of the other new fields. After the upgrade, the operator requires the CR to spell out those field values exactly. If the monitor's current values do not match the CR's defaults (for example `maxCheckAttempts` is 2 in Mackerel but the CR omits the field, so the operator defaults it to 1), the adoption path will report `OwnershipLost` instead of adopting the monitor. Resolve this by setting the field explicitly in the CR to match what Mackerel currently holds, applying the CR, and then letting the operator adopt and manage the monitor normally.
+
+### Upgrading from a version without `dualstack`
+
+`dualstack` is now managed by the operator as well, and it behaves differently from the six fields above: Mackerel **keeps** the stored value when the key is absent from a request, so earlier versions of the operator never touched it. From this release the operator writes the field on every create and update, sending `ipv4` when the CR omits it.
+
+**Before upgrading**, add `dualstack` to any `ExternalMonitor` whose monitor was switched to IPv6 or auto in the Mackerel web UI. Otherwise the next reconcile resets that monitor to IPv4, and a URL that only resolves over IPv6 starts failing its check.
+
+Adding the field does not change the desired-state hash of an `ExternalMonitor` that omits it, so unlike the `maxCheckAttempts` default this upgrade does not by itself cause an Update on every resource. Monitor adoption follows the same rule as the other fields: a name-matched, marker-less monitor set to IPv6 is only adopted if the CR spells out `dualstack: ipv6`.
 
 ## Development
 
