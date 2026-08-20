@@ -87,4 +87,50 @@ var _ = Describe("ExternalMonitor Controller", func() {
 			// Example: If you expect a certain status condition after reconciliation, verify it here.
 		})
 	})
+
+	Context("When validating header values", func() {
+		ctx := context.Background()
+
+		newHeaderResource := func(name string, header mackerelv1alpha1.HeaderField) *mackerelv1alpha1.ExternalMonitor {
+			return &mackerelv1alpha1.ExternalMonitor{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      name,
+					Namespace: "default",
+				},
+				Spec: mackerelv1alpha1.ExternalMonitorSpec{
+					URL:     "https://example.com/healthz",
+					Headers: []mackerelv1alpha1.HeaderField{header},
+				},
+			}
+		}
+
+		secretKeyRef := &mackerelv1alpha1.HeaderValueSource{
+			SecretKeyRef: &mackerelv1alpha1.SecretKeySelector{Name: "api-credentials", Key: "token"},
+		}
+
+		It("should accept a header that reads its value from a Secret", func() {
+			resource := newHeaderResource("header-value-from", mackerelv1alpha1.HeaderField{
+				Name:      "Authorization",
+				ValueFrom: secretKeyRef,
+			})
+			Expect(k8sClient.Create(ctx, resource)).To(Succeed())
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		})
+
+		It("should reject a header that sets both value and valueFrom", func() {
+			resource := newHeaderResource("header-both", mackerelv1alpha1.HeaderField{
+				Name:      "Authorization",
+				Value:     new("Bearer token"),
+				ValueFrom: secretKeyRef,
+			})
+			Expect(k8sClient.Create(ctx, resource)).NotTo(Succeed())
+		})
+
+		It("should reject a header that sets neither value nor valueFrom", func() {
+			resource := newHeaderResource("header-neither", mackerelv1alpha1.HeaderField{
+				Name: "Authorization",
+			})
+			Expect(k8sClient.Create(ctx, resource)).NotTo(Succeed())
+		})
+	})
 })

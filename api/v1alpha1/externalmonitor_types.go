@@ -121,6 +121,7 @@ type ExternalMonitorList struct {
 }
 
 // HeaderField is an HTTP request header sent by the external monitor.
+// +kubebuilder:validation:XValidation:rule="has(self.value) != has(self.valueFrom)",message="exactly one of value and valueFrom must be set"
 type HeaderField struct {
 	// name is the header name. The character set is the RFC 7230 token set
 	// minus the backtick, which no real header name uses and which would
@@ -131,9 +132,44 @@ type HeaderField struct {
 	// +kubebuilder:validation:Pattern=`^[A-Za-z0-9!#$%&'*+.^_|~-]+$`
 	Name string `json:"name"`
 	// value is the header value sent verbatim. It is stored in plain text in
-	// the cluster, so avoid credentials until Secret references are supported.
+	// the cluster and Mackerel returns it unmasked, so use valueFrom for
+	// credentials such as an Authorization header.
+	// +optional
+	Value *string `json:"value,omitempty"`
+	// valueFrom reads the header value from another resource. Exactly one of
+	// value and valueFrom must be set.
+	// +optional
+	ValueFrom *HeaderValueSource `json:"valueFrom,omitempty"`
+}
+
+// HeaderValueSource is an indirect source for a header value. It mirrors the
+// shape of corev1.EnvVarSource so that the field is familiar, and is declared
+// here rather than reused so that the CRD carries no source kind the operator
+// does not resolve.
+type HeaderValueSource struct {
+	// secretKeyRef selects a key of a Secret in the namespace of the
+	// ExternalMonitor.
 	// +kubebuilder:validation:Required
-	Value string `json:"value"`
+	SecretKeyRef *SecretKeySelector `json:"secretKeyRef"`
+}
+
+// SecretKeySelector selects a key of a Secret.
+//
+// Unlike corev1.SecretKeySelector there is no optional field: a reference that
+// cannot be resolved blocks the reconciliation instead of sending a partial
+// header set to Mackerel.
+type SecretKeySelector struct {
+	// name is the name of the Secret. It must live in the same namespace as the
+	// ExternalMonitor.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Name string `json:"name"`
+	// key is the key of the Secret to read the header value from.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=253
+	Key string `json:"key"`
 }
 
 func init() {

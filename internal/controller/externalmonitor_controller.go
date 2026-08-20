@@ -22,13 +22,16 @@ import (
 	"fmt"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
@@ -51,9 +54,10 @@ const (
 // ExternalMonitorReconciler reconciles a ExternalMonitor object
 type ExternalMonitorReconciler struct {
 	client.Client
-	// APIReader reads past the informer cache. It is only used to refresh a resource
-	// after a conflict, where a cached read may still return the very version that
-	// caused it. Falls back to Client when nil.
+	// APIReader reads past the informer cache. It refreshes a resource after a
+	// conflict, where a cached read may still return the very version that caused
+	// it, and it reads the Secrets referenced by header values, which are
+	// deliberately not cached. Falls back to Client when nil.
 	APIReader  client.Reader
 	Scheme     *runtime.Scheme
 	Provider   provider.ExternalMonitorProvider
@@ -68,6 +72,7 @@ var errAmbiguousExternalMonitor = errors.New("ambiguous external monitor candida
 // +kubebuilder:rbac:groups=mackerel.starry.blue,resources=externalmonitors,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=mackerel.starry.blue,resources=externalmonitors/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=mackerel.starry.blue,resources=externalmonitors/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 
 func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -96,7 +101,27 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return r.reconcileDelete(ctx, cr, desired, actual)
 	}
 
-	desired, err := r.externalMonitorSource().FromExternalMonitor(cr)
+	headerValues, err := r.resolveHeaderValues(ctx, cr)
+	if err != nil {
+		// A missing Secret or key is a user-visible configuration problem, not a
+		// transient failure, so the reconciliation stops here instead of writing
+		// a monitor without the header. The Secret watch requeues the CR as soon
+		// as the reference becomes resolvable.
+		if isUnresolvableSecretRef(err) {
+			log.V(1).Info("blocked on an unresolvable header value", "error", err.Error())
+			return ctrl.Result{RequeueAfter: defaultRequeueAfter}, r.patchStatus(ctx, cr, func() {
+				operatorstatus.MarkError(cr, operatorstatus.ReasonSecretNotFound, err.Error())
+			})
+		}
+		if statusErr := r.patchStatus(ctx, cr, func() {
+			operatorstatus.MarkError(cr, operatorstatus.ReasonSecretError, err.Error())
+		}); statusErr != nil {
+			return ctrl.Result{}, errors.Join(err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
+
+	desired, err := r.externalMonitorSource(headerValues).FromExternalMonitor(cr)
 	if err != nil {
 		return ctrl.Result{}, r.patchStatus(ctx, cr, func() {
 			operatorstatus.MarkInvalidSpec(cr, err.Error())
@@ -266,11 +291,47 @@ func (r *ExternalMonitorReconciler) apiReader() client.Reader {
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ExternalMonitorReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ExternalMonitorReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(ctx, &mackerelv1alpha1.ExternalMonitor{}, secretRefIndexKey, func(obj client.Object) []string {
+		cr, ok := obj.(*mackerelv1alpha1.ExternalMonitor)
+		if !ok {
+			return nil
+		}
+		return secretNamesForExternalMonitor(cr)
+	}); err != nil {
+		return fmt.Errorf("index external monitors by referenced secret: %w", err)
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&mackerelv1alpha1.ExternalMonitor{}).
+		// Only the metadata of Secrets is cached. The watch exists to notice a
+		// rotation, and the values themselves are read on demand through
+		// APIReader, so there is no reason to mirror every Secret payload in
+		// the operator's memory.
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.externalMonitorsForSecret), builder.OnlyMetadata).
 		Named("externalmonitor").
 		Complete(r)
+}
+
+// externalMonitorsForSecret maps a Secret event to the ExternalMonitors that
+// read a header value from it. Secret references are namespace-local, so the
+// lookup is scoped to the namespace of the Secret.
+func (r *ExternalMonitorReconciler) externalMonitorsForSecret(ctx context.Context, secret client.Object) []ctrl.Request {
+	var list mackerelv1alpha1.ExternalMonitorList
+	if err := r.List(ctx, &list,
+		client.InNamespace(secret.GetNamespace()),
+		client.MatchingFields{secretRefIndexKey: secret.GetName()},
+	); err != nil {
+		logf.FromContext(ctx).Error(err, "Failed to list external monitors referencing a secret",
+			"namespace", secret.GetNamespace(), "secret", secret.GetName())
+		return nil
+	}
+
+	requests := make([]ctrl.Request, 0, len(list.Items))
+	for i := range list.Items {
+		requests = append(requests, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(&list.Items[i])})
+	}
+	return requests
 }
 
 func (r *ExternalMonitorReconciler) findActual(ctx context.Context, monitorID string, desired monitor.DesiredExternalMonitor) (*monitor.ActualExternalMonitor, error) {
@@ -322,13 +383,19 @@ func (r *ExternalMonitorReconciler) reconcileDelete(ctx context.Context, cr *mac
 	return ctrl.Result{}, r.removeFinalizer(ctx, cr)
 }
 
-func (r *ExternalMonitorReconciler) externalMonitorSource() source.ExternalMonitorSource {
+func (r *ExternalMonitorReconciler) externalMonitorSource(headerValues map[string]string) source.ExternalMonitorSource {
 	return source.ExternalMonitorSource{
-		OwnerID:    r.ownerID(),
-		HashLength: r.hashLength(),
+		OwnerID:      r.ownerID(),
+		HashLength:   r.hashLength(),
+		HeaderValues: headerValues,
 	}
 }
 
+// externalMonitorDeletionSource builds the desired state used while finalizing.
+// It leaves HeaderValues nil on purpose: the deletion path only needs Name,
+// Owner and Resource to locate the monitor, and resolving Secrets here would
+// turn a Secret deleted before its ExternalMonitor into a monitor orphaned in
+// Mackerel, because a failure to build the desired state drops the finalizer.
 func (r *ExternalMonitorReconciler) externalMonitorDeletionSource() source.ExternalMonitorSource {
 	return source.ExternalMonitorSource{
 		OwnerID:    r.ownerID(),

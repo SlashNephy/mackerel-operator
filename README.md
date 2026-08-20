@@ -65,9 +65,40 @@ retry), `ipv6` (no IPv4 retry), or `auto` (IPv6 first, then IPv4). Omitting the
 field behaves as `ipv4`, which is what Mackerel applies to a monitor that never
 set it.
 
-Header values are stored in plain text in the cluster and are returned unmasked
-by the Mackerel API. Avoid putting credentials in `headers` until Secret
-references are supported.
+### Header values from a Secret
+
+A header value written as `value` is stored in plain text in the CR and in etcd,
+and the Mackerel API returns it unmasked. Read credentials from a Secret
+instead:
+
+```yaml
+spec:
+  headers:
+    - name: Authorization
+      valueFrom:
+        secretKeyRef:
+          name: api-credentials
+          key: token
+```
+
+Exactly one of `value` and `valueFrom` must be set on a header; the API server
+rejects a header that sets both or neither.
+
+The Secret must live in the same namespace as the `ExternalMonitor`. The
+operator watches the referenced Secrets, so rotating one triggers a
+reconciliation that pushes the new value to Mackerel. While a referenced Secret
+or key is missing, the monitor is left untouched and the CR reports
+`Ready=False` with reason `SecretNotFound`, rather than being written with a
+partial header set.
+
+Note that this protects the value at rest in the cluster only. Mackerel stores
+and returns the resolved value like any other header value, so anyone with
+access to the Mackerel API can still read it.
+
+The operator therefore needs `get`, `list` and `watch` on Secrets. Because it
+watches `ExternalMonitor` resources across the whole cluster, that permission is
+granted cluster wide. Only the metadata of Secrets is cached; the values are
+read on demand and are not held in the operator's memory.
 
 ### Upgrading from a version without `isMute`, `followRedirect`, `skipCertificateVerification`, `maxCheckAttempts`, `requestBody`, or `headers`
 

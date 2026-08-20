@@ -170,8 +170,8 @@ func TestExternalMonitorSourceMapsRemainingFields(t *testing.T) {
 			RequestBody:                 `{"ping":true}`,
 			Dualstack:                   "auto",
 			Headers: []mackerelv1alpha1.HeaderField{
-				{Name: "X-Zebra", Value: "last"},
-				{Name: "Authorization", Value: "Bearer token"},
+				{Name: "X-Zebra", Value: new("last")},
+				{Name: "Authorization", Value: new("Bearer token")},
 			},
 		},
 	}
@@ -264,4 +264,120 @@ func TestExternalMonitorSourceLeavesDualstackUnset(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Empty(t, got.Dualstack)
+}
+
+func TestExternalMonitorSourceResolvesHeaderValues(t *testing.T) {
+	t.Parallel()
+
+	secretHeader := mackerelv1alpha1.HeaderField{
+		Name: "Authorization",
+		ValueFrom: &mackerelv1alpha1.HeaderValueSource{
+			SecretKeyRef: &mackerelv1alpha1.SecretKeySelector{Name: "api-credentials", Key: "token"},
+		},
+	}
+
+	tests := []struct {
+		name         string
+		headers      []mackerelv1alpha1.HeaderField
+		headerValues map[string]string
+		want         []monitor.HeaderField
+		wantErr      bool
+	}{
+		{
+			name:         "resolved value replaces the reference",
+			headers:      []mackerelv1alpha1.HeaderField{secretHeader},
+			headerValues: map[string]string{"Authorization": "Bearer token"},
+			want:         []monitor.HeaderField{{Name: "Authorization", Value: "Bearer token"}},
+		},
+		{
+			name: "resolved and inline values are sorted together",
+			headers: []mackerelv1alpha1.HeaderField{
+				{Name: "X-Zebra", Value: new("last")},
+				secretHeader,
+			},
+			headerValues: map[string]string{"Authorization": "Bearer token"},
+			want: []monitor.HeaderField{
+				{Name: "Authorization", Value: "Bearer token"},
+				{Name: "X-Zebra", Value: "last"},
+			},
+		},
+		{
+			name:         "an empty secret value is sent as an empty header",
+			headers:      []mackerelv1alpha1.HeaderField{secretHeader},
+			headerValues: map[string]string{"Authorization": ""},
+			want:         []monitor.HeaderField{{Name: "Authorization", Value: ""}},
+		},
+		{
+			name:         "a caller that resolves headers must resolve all of them",
+			headers:      []mackerelv1alpha1.HeaderField{secretHeader},
+			headerValues: map[string]string{},
+			wantErr:      true,
+		},
+		{
+			name: "a caller that does not resolve headers drops them",
+			headers: []mackerelv1alpha1.HeaderField{
+				{Name: "X-Zebra", Value: new("last")},
+				secretHeader,
+			},
+			headerValues: nil,
+			want:         []monitor.HeaderField{{Name: "X-Zebra", Value: "last"}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cr := &mackerelv1alpha1.ExternalMonitor{
+				ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
+				Spec: mackerelv1alpha1.ExternalMonitorSpec{
+					URL:     "https://api.example.com/healthz",
+					Headers: tt.headers,
+				},
+			}
+
+			src := ExternalMonitorSource{OwnerID: "prod", HashLength: 7, HeaderValues: tt.headerValues}
+			got, err := src.FromExternalMonitor(cr)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got.Headers)
+		})
+	}
+}
+
+func TestExternalMonitorSourceHashesResolvedHeaderValues(t *testing.T) {
+	t.Parallel()
+
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL: "https://api.example.com/healthz",
+			Headers: []mackerelv1alpha1.HeaderField{{
+				Name: "Authorization",
+				ValueFrom: &mackerelv1alpha1.HeaderValueSource{
+					SecretKeyRef: &mackerelv1alpha1.SecretKeySelector{Name: "api-credentials", Key: "token"},
+				},
+			}},
+		},
+	}
+
+	before, err := ExternalMonitorSource{
+		OwnerID:      "prod",
+		HashLength:   7,
+		HeaderValues: map[string]string{"Authorization": "Bearer token"},
+	}.FromExternalMonitor(cr)
+	require.NoError(t, err)
+
+	after, err := ExternalMonitorSource{
+		OwnerID:      "prod",
+		HashLength:   7,
+		HeaderValues: map[string]string{"Authorization": "Bearer rotated"},
+	}.FromExternalMonitor(cr)
+	require.NoError(t, err)
+
+	assert.NotEqual(t, before.Hash, after.Hash, "rotating a referenced Secret must move the desired hash")
 }

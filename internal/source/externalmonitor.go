@@ -15,6 +15,18 @@ var ErrExternalMonitorNil = errors.New("external monitor is nil")
 type ExternalMonitorSource struct {
 	OwnerID    string
 	HashLength int
+	// HeaderValues holds the already resolved values of the headers declared
+	// with valueFrom, keyed by header name. The resolution itself lives in the
+	// caller because it needs a Kubernetes client, which this package keeps out
+	// of the desired-state computation.
+	//
+	// A nil map means "this caller does not resolve headers at all" and drops
+	// the secret-backed headers instead of failing. The deletion path relies on
+	// it: deleting a monitor only needs Name, Owner and Resource, and the
+	// referenced Secret may already be gone by then. A non-nil map must contain
+	// every secret-backed header, otherwise the monitor would be written with a
+	// partial header set.
+	HeaderValues map[string]string
 }
 
 func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.ExternalMonitor) (monitor.DesiredExternalMonitor, error) {
@@ -37,6 +49,11 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 	// planner see a permanent diff and rewrite the monitor on every reconcile.
 	maxCheckAttempts := max(cr.Spec.MaxCheckAttempts, 1)
 
+	headers, err := s.sortedHeaders(cr.Spec.Headers)
+	if err != nil {
+		return monitor.DesiredExternalMonitor{}, err
+	}
+
 	desired := monitor.DesiredExternalMonitor{
 		Name:                            name,
 		Service:                         cr.Spec.Service,
@@ -56,7 +73,7 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 		MaxCheckAttempts:                maxCheckAttempts,
 		RequestBody:                     cr.Spec.RequestBody,
 		Dualstack:                       cr.Spec.Dualstack,
-		Headers:                         sortedHeaders(cr.Spec.Headers),
+		Headers:                         headers,
 		Memo:                            cr.Spec.Memo,
 		Resource:                        fmt.Sprintf("externalmonitor/%s/%s", cr.Namespace, cr.Name),
 		Owner:                           s.OwnerID,
@@ -82,15 +99,49 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 // The sort is stable to guard Go callers that construct headers programmatically
 // with duplicate names; the CRD's listType=map makes such duplicates unreachable
 // through the API server.
-func sortedHeaders(headers []mackerelv1alpha1.HeaderField) []monitor.HeaderField {
+//
+// Resolved secret values take part in the hash like any other value. Mackerel
+// returns header values unmasked, so the short hash in the monitor memo tells a
+// reader nothing they could not already read from the API, and rotating a
+// Secret moves the hash instead of relying on the drift comparison alone.
+func (s ExternalMonitorSource) sortedHeaders(headers []mackerelv1alpha1.HeaderField) ([]monitor.HeaderField, error) {
 	sorted := make([]monitor.HeaderField, 0, len(headers))
 	for _, h := range headers {
-		sorted = append(sorted, monitor.HeaderField{Name: h.Name, Value: h.Value})
+		value, ok, err := s.headerValue(&h)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		sorted = append(sorted, monitor.HeaderField{Name: h.Name, Value: value})
 	}
 
 	slices.SortStableFunc(sorted, func(a, b monitor.HeaderField) int {
 		return strings.Compare(a.Name, b.Name)
 	})
 
-	return sorted
+	return sorted, nil
+}
+
+// headerValue reports the value to send for a single header. The second result
+// is false when the header has to be dropped, which only happens for a
+// secret-backed header on a caller that does not resolve headers.
+func (s ExternalMonitorSource) headerValue(header *mackerelv1alpha1.HeaderField) (string, bool, error) {
+	if header.ValueFrom == nil {
+		if header.Value == nil {
+			return "", false, fmt.Errorf("header %q has neither value nor valueFrom", header.Name)
+		}
+		return *header.Value, true, nil
+	}
+
+	if s.HeaderValues == nil {
+		return "", false, nil
+	}
+
+	value, ok := s.HeaderValues[header.Name]
+	if !ok {
+		return "", false, fmt.Errorf("header %q has no resolved value", header.Name)
+	}
+	return value, true, nil
 }

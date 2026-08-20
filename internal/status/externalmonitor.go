@@ -12,6 +12,13 @@ const (
 	ReasonSynced        = "Synced"
 	ReasonOwnershipLost = "OwnershipLost"
 	ReasonInvalidSpec   = "InvalidSpec"
+	// ReasonSecretNotFound reports a header whose Secret or key does not exist.
+	// Only a user edit can resolve it, so the reconciliation waits for the
+	// Secret watch instead of retrying with backoff.
+	ReasonSecretNotFound = "SecretNotFound"
+	// ReasonSecretError reports a failure to read a referenced Secret, such as
+	// the operator lacking the RBAC permission to do so.
+	ReasonSecretError = "SecretError"
 )
 
 type SyncResult struct {
