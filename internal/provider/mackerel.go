@@ -134,6 +134,7 @@ func actualExternalMonitorFromMackerel(m *mackerel.MonitorExternalHTTP) monitor.
 		SkipCertificateVerification:     m.SkipCertificateVerification,
 		MaxCheckAttempts:                intFromUint64(m.MaxCheckAttempts),
 		RequestBody:                     m.RequestBody,
+		Dualstack:                       dualstackFromMackerel(m.Dualstack),
 		Headers:                         headerFieldsFromMackerel(m.Headers),
 		Memo:                            m.Memo,
 	}
@@ -195,6 +196,7 @@ func mergeMackerelExternalMonitor(base *mackerel.MonitorExternalHTTP, desired mo
 	merged.SkipCertificateVerification = desired.SkipCertificateVerification
 	merged.MaxCheckAttempts = maxCheckAttempts
 	merged.RequestBody = desired.RequestBody
+	merged.Dualstack = dualstackToMackerel(desired.Dualstack)
 	merged.Headers = headerFieldsToMackerel(desired.Headers)
 
 	return &merged, nil
@@ -297,6 +299,26 @@ func intFromUint64(v uint64) int {
 	}
 
 	return int(v)
+}
+
+// dualstackFromMackerel reports the raw value Mackerel holds, leaving an unset
+// field empty rather than widening it to ipv4. The widening belongs to the
+// comparison in internal/planner, which applies it to both sides at once.
+func dualstackFromMackerel(dualstack *mackerel.Dualstack) string {
+	if dualstack == nil {
+		return ""
+	}
+
+	return string(*dualstack)
+}
+
+// dualstackToMackerel always returns a non-nil pointer, so every write carries
+// an explicit dualstack. Mackerel keeps the stored value when the key is absent
+// from a PUT, unlike the other external monitor fields, so omitting it for an
+// unset CR would leave a value set elsewhere in place and the planner, which
+// reads that unset CR as ipv4, would issue the same Update forever.
+func dualstackToMackerel(dualstack string) *mackerel.Dualstack {
+	return new(mackerel.Dualstack(monitor.NormalizeDualstack(dualstack)))
 }
 
 func headerFieldsFromMackerel(headers []mackerel.HeaderField) []monitor.HeaderField {

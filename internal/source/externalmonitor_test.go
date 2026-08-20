@@ -168,6 +168,7 @@ func TestExternalMonitorSourceMapsRemainingFields(t *testing.T) {
 			SkipCertificateVerification: true,
 			MaxCheckAttempts:            3,
 			RequestBody:                 `{"ping":true}`,
+			Dualstack:                   "auto",
 			Headers: []mackerelv1alpha1.HeaderField{
 				{Name: "X-Zebra", Value: "last"},
 				{Name: "Authorization", Value: "Bearer token"},
@@ -184,6 +185,7 @@ func TestExternalMonitorSourceMapsRemainingFields(t *testing.T) {
 	assert.True(t, got.SkipCertificateVerification)
 	assert.Equal(t, 3, got.MaxCheckAttempts)
 	assert.Equal(t, `{"ping":true}`, got.RequestBody)
+	assert.Equal(t, "auto", got.Dualstack)
 	assert.Equal(t, []monitor.HeaderField{
 		{Name: "Authorization", Value: "Bearer token"},
 		{Name: "X-Zebra", Value: "last"},
@@ -239,4 +241,27 @@ func TestExternalMonitorSourceEmitsEmptyHeadersSlice(t *testing.T) {
 
 	assert.NotNil(t, got.Headers, "prefer an empty slice over nil")
 	assert.Empty(t, got.Headers)
+}
+
+// TestExternalMonitorSourceLeavesDualstackUnset pins the deliberate asymmetry
+// with maxCheckAttempts: an unset dualstack is *not* widened to ipv4 here.
+// Materialising the default would put the key into the desired JSON and change
+// the hash of every ExternalMonitor that predates the field, forcing an Update
+// on upgrade. The ipv4 semantics are applied in the planner and the provider
+// instead.
+func TestExternalMonitorSourceLeavesDualstackUnset(t *testing.T) {
+	t.Parallel()
+
+	cr := &mackerelv1alpha1.ExternalMonitor{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "default", Name: "api-health"},
+		Spec: mackerelv1alpha1.ExternalMonitorSpec{
+			URL: "https://api.example.com/healthz",
+		},
+	}
+
+	src := ExternalMonitorSource{OwnerID: "prod", HashLength: 7}
+	got, err := src.FromExternalMonitor(cr)
+	require.NoError(t, err)
+
+	assert.Empty(t, got.Dualstack)
 }

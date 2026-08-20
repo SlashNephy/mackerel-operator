@@ -129,6 +129,7 @@ func TestHashDesiredIgnoresZeroValuedNewFields(t *testing.T) {
 	withZeroValues.SkipCertificateVerification = false
 	withZeroValues.MaxCheckAttempts = 0
 	withZeroValues.RequestBody = ""
+	withZeroValues.Dualstack = ""
 	withZeroValues.Headers = []HeaderField{}
 
 	baseHash, err := HashDesired(base, 12)
@@ -160,6 +161,7 @@ func TestHashDesiredChangesWhenNewFieldsAreSet(t *testing.T) {
 		{name: "skipCertificateVerification", mutate: func(d *DesiredExternalMonitor) { d.SkipCertificateVerification = true }},
 		{name: "maxCheckAttempts", mutate: func(d *DesiredExternalMonitor) { d.MaxCheckAttempts = 3 }},
 		{name: "requestBody", mutate: func(d *DesiredExternalMonitor) { d.RequestBody = `{"ping":true}` }},
+		{name: "dualstack", mutate: func(d *DesiredExternalMonitor) { d.Dualstack = "ipv6" }},
 		{name: "headers", mutate: func(d *DesiredExternalMonitor) {
 			d.Headers = []HeaderField{{Name: "Authorization", Value: "Bearer token"}}
 		}},

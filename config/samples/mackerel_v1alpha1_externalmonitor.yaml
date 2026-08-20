@@ -22,6 +22,7 @@ spec:
   followRedirect: true
   skipCertificateVerification: false
   maxCheckAttempts: 3
+  dualstack: ipv4
   headers:
     - name: X-Request-Source
       value: mackerel-operator

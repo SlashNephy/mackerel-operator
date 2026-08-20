@@ -682,6 +682,7 @@ func actualFromDesired(id string, desired monitor.DesiredExternalMonitor, memo s
 		SkipCertificateVerification:     desired.SkipCertificateVerification,
 		MaxCheckAttempts:                desired.MaxCheckAttempts,
 		RequestBody:                     desired.RequestBody,
+		Dualstack:                       monitor.NormalizeDualstack(desired.Dualstack),
 		Headers:                         desired.Headers,
 		Memo:                            memo,
 	}

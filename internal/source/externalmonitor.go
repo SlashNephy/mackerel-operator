@@ -55,6 +55,7 @@ func (s ExternalMonitorSource) FromExternalMonitor(cr *mackerelv1alpha1.External
 		SkipCertificateVerification:     cr.Spec.SkipCertificateVerification,
 		MaxCheckAttempts:                maxCheckAttempts,
 		RequestBody:                     cr.Spec.RequestBody,
+		Dualstack:                       cr.Spec.Dualstack,
 		Headers:                         sortedHeaders(cr.Spec.Headers),
 		Memo:                            cr.Spec.Memo,
 		Resource:                        fmt.Sprintf("externalmonitor/%s/%s", cr.Namespace, cr.Name),

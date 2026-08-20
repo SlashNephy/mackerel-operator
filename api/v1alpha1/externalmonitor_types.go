@@ -62,6 +62,13 @@ type ExternalMonitorSpec struct {
 	// +kubebuilder:default=1
 	MaxCheckAttempts int    `json:"maxCheckAttempts,omitempty"`
 	RequestBody      string `json:"requestBody,omitempty"`
+	// dualstack selects the IP version used to reach the URL. An unset value
+	// behaves as ipv4, which is what Mackerel applies to monitors that never
+	// set the field. It is deliberately left without a kubebuilder default: a
+	// default would materialise ipv4 into every existing ExternalMonitor and
+	// change its desired-state hash, forcing an Update on upgrade.
+	// +kubebuilder:validation:Enum=ipv4;ipv6;auto
+	Dualstack string `json:"dualstack,omitempty"`
 	// +listType=map
 	// +listMapKey=name
 	Headers []HeaderField `json:"headers,omitempty"`
