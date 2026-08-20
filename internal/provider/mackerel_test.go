@@ -64,6 +64,8 @@ func TestMergeMackerelExternalMonitorOwnsManagedFields(t *testing.T) {
 	assert.Equal(t, uint64(2), got.MaxCheckAttempts)
 	assert.Equal(t, `{"ping":true}`, got.RequestBody)
 	assert.Equal(t, []mackerel.HeaderField{{Name: "Authorization", Value: "Bearer token"}}, got.Headers)
+	require.NotNil(t, got.Dualstack)
+	assert.Equal(t, mackerel.DualstackIPv4, *got.Dualstack)
 
 	assert.Nil(t, got.ResponseTimeDuration)
 	assert.Equal(t, desired.Name, got.Name)
@@ -114,6 +116,7 @@ func TestActualExternalMonitorFromMackerelReadsRemainingFields(t *testing.T) {
 		SkipCertificateVerification: true,
 		MaxCheckAttempts:            4,
 		RequestBody:                 `{"ping":true}`,
+		Dualstack:                   new(mackerel.DualstackIPv6),
 		Headers: []mackerel.HeaderField{
 			{Name: "X-Zebra", Value: "last"},
 			{Name: "Authorization", Value: "Bearer token"},
@@ -125,6 +128,7 @@ func TestActualExternalMonitorFromMackerelReadsRemainingFields(t *testing.T) {
 	assert.True(t, got.SkipCertificateVerification)
 	assert.Equal(t, 4, got.MaxCheckAttempts)
 	assert.Equal(t, `{"ping":true}`, got.RequestBody)
+	assert.Equal(t, "ipv6", got.Dualstack)
 	assert.Equal(t, []monitor.HeaderField{
 		{Name: "X-Zebra", Value: "last"},
 		{Name: "Authorization", Value: "Bearer token"},
@@ -183,4 +187,65 @@ func TestNewMackerelProviderRejectsBlankAPIKey(t *testing.T) {
 	if !errors.Is(err, errEmptyAPIKey) {
 		t.Fatalf("NewMackerelProvider error = %v, want errEmptyAPIKey", err)
 	}
+}
+
+// TestMergeMackerelExternalMonitorAlwaysSendsDualstack covers the one external
+// monitor field Mackerel does *not* reset when the key is absent from a PUT.
+// Because the stored value survives omission, an unset CR has to be written as
+// an explicit ipv4 rather than left out: the planner reads an unset CR as ipv4,
+// so omitting the key would leave a monitor set to ipv6 elsewhere unchanged and
+// the same Update would be reissued on every reconcile.
+func TestMergeMackerelExternalMonitorAlwaysSendsDualstack(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		desired string
+		want    mackerel.Dualstack
+	}{
+		{name: "unset is written as ipv4", desired: "", want: mackerel.DualstackIPv4},
+		{name: "ipv4", desired: "ipv4", want: mackerel.DualstackIPv4},
+		{name: "ipv6", desired: "ipv6", want: mackerel.DualstackIPv6},
+		{name: "auto", desired: "auto", want: mackerel.DualstackAuto},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := mergeMackerelExternalMonitor(
+				&mackerel.MonitorExternalHTTP{Dualstack: new(mackerel.DualstackAuto)},
+				monitor.DesiredExternalMonitor{
+					Name:      "API health",
+					URL:       "https://api.example.com/healthz",
+					Method:    "GET",
+					Dualstack: tt.desired,
+				},
+				"",
+			)
+			require.NoError(t, err)
+
+			require.NotNil(t, got.Dualstack)
+			assert.Equal(t, tt.want, *got.Dualstack)
+
+			encoded, err := json.Marshal(got)
+			require.NoError(t, err)
+			assert.Contains(t, string(encoded), `"dualstack":"`+string(tt.want)+`"`)
+		})
+	}
+}
+
+// TestActualExternalMonitorFromMackerelLeavesAbsentDualstackEmpty pins the read
+// side: an absent key stays empty rather than being widened here, so the
+// widening lives in exactly one place, the planner comparison.
+func TestActualExternalMonitorFromMackerelLeavesAbsentDualstackEmpty(t *testing.T) {
+	t.Parallel()
+
+	got := actualExternalMonitorFromMackerel(&mackerel.MonitorExternalHTTP{
+		ID:   "mon-1",
+		Name: "API health",
+		URL:  "https://api.example.com/healthz",
+	})
+
+	assert.Empty(t, got.Dualstack)
 }

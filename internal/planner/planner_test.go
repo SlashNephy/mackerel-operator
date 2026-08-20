@@ -257,6 +257,10 @@ func TestPlanDetectsDriftOnRemainingFields(t *testing.T) {
 		{name: "skipCertificateVerification drifted", mutate: func(a *monitor.ActualExternalMonitor) { a.SkipCertificateVerification = true }, want: ActionUpdate},
 		{name: "maxCheckAttempts drifted", mutate: func(a *monitor.ActualExternalMonitor) { a.MaxCheckAttempts = 5 }, want: ActionUpdate},
 		{name: "requestBody drifted", mutate: func(a *monitor.ActualExternalMonitor) { a.RequestBody = "changed" }, want: ActionUpdate},
+		{name: "dualstack drifted", mutate: func(a *monitor.ActualExternalMonitor) { a.Dualstack = "ipv6" }, want: ActionUpdate},
+		// Mackerel omits dualstack from a monitor that never set it, so an
+		// explicit ipv4 and an absent value describe the same monitor.
+		{name: "dualstack reported as explicit ipv4", mutate: func(a *monitor.ActualExternalMonitor) { a.Dualstack = "ipv4" }, want: ActionNoop},
 		{
 			name: "header value drifted",
 			mutate: func(a *monitor.ActualExternalMonitor) {
@@ -324,4 +328,62 @@ func TestPlanIgnoresHeaderOrder(t *testing.T) {
 
 	decision := Plan(PlanInput{Desired: desired, Actual: &actual})
 	assert.Equal(t, ActionNoop, decision.Action, decision.Reason)
+}
+
+// TestPlanNoopWhenDualstackMatchesAcrossRepresentations covers the pair the
+// normalisation exists for. Mackerel returns no dualstack key for a monitor
+// that never set one, and the CR leaves the field empty when it is omitted, so
+// the two sides can disagree textually while describing the same monitor.
+// Without widening both to ipv4 the planner would issue the same Update on
+// every reconcile.
+func TestPlanNoopWhenDualstackMatchesAcrossRepresentations(t *testing.T) {
+	t.Parallel()
+
+	const (
+		owner    = "prod"
+		resource = "externalmonitor/default/api"
+		hash     = "deadbee"
+	)
+
+	tests := []struct {
+		name    string
+		desired string
+		actual  string
+		want    Action
+	}{
+		{name: "both unset", desired: "", actual: "", want: ActionNoop},
+		{name: "desired unset, actual explicit ipv4", desired: "", actual: "ipv4", want: ActionNoop},
+		{name: "desired explicit ipv4, actual unset", desired: "ipv4", actual: "", want: ActionNoop},
+		{name: "desired ipv6, actual ipv6", desired: "ipv6", actual: "ipv6", want: ActionNoop},
+		{name: "desired unset, actual ipv6", desired: "", actual: "ipv6", want: ActionUpdate},
+		{name: "desired auto, actual unset", desired: "auto", actual: "", want: ActionUpdate},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			decision := Plan(PlanInput{
+				Desired: monitor.DesiredExternalMonitor{
+					Name:             "api",
+					URL:              "https://example.com",
+					MaxCheckAttempts: 1,
+					Dualstack:        tt.desired,
+					Owner:            owner,
+					Resource:         resource,
+					Hash:             hash,
+				},
+				Actual: &monitor.ActualExternalMonitor{
+					ID:               "mon-1",
+					Name:             "api",
+					URL:              "https://example.com",
+					MaxCheckAttempts: 1,
+					Dualstack:        tt.actual,
+					Memo:             ownership.BuildMarker(ownership.Marker{Resource: resource, Owner: owner, Hash: hash}),
+				},
+			})
+
+			assert.Equal(t, tt.want, decision.Action, decision.Reason)
+		})
+	}
 }

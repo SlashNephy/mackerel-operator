@@ -60,6 +60,18 @@ spec:
                 type: integer
               containsString:
                 type: string
+              dualstack:
+                description: |-
+                  dualstack selects the IP version used to reach the URL. An unset value
+                  behaves as ipv4, which is what Mackerel applies to monitors that never
+                  set the field. It is deliberately left without a kubebuilder default: a
+                  default would materialise ipv4 into every existing ExternalMonitor and
+                  change its desired-state hash, forcing an Update on upgrade.
+                enum:
+                - ipv4
+                - ipv6
+                - auto
+                type: string
               expectedStatusCode:
                 maximum: 599
                 minimum: 100

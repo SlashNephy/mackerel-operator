@@ -90,6 +90,7 @@ func actualMatchesDesired(desired monitor.DesiredExternalMonitor, actual monitor
 		desired.SkipCertificateVerification == actual.SkipCertificateVerification &&
 		desired.MaxCheckAttempts == actual.MaxCheckAttempts &&
 		desired.RequestBody == actual.RequestBody &&
+		monitor.NormalizeDualstack(desired.Dualstack) == monitor.NormalizeDualstack(actual.Dualstack) &&
 		headersMatch(desired.Headers, actual.Headers)
 }
 
