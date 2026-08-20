@@ -2,6 +2,17 @@ apiVersion: v1
 entries:
   mackerel-operator:
   - apiVersion: v2
+    appVersion: 0.3.0
+    created: "2026-08-20T03:28:47.202994809Z"
+    description: A Kubernetes operator that synchronizes ExternalMonitor resources
+      with Mackerel external monitors.
+    digest: 996c5092480afe51a15da012feb7ec6def148c9400341e58f243356a9b4ab780
+    name: mackerel-operator
+    type: application
+    urls:
+    - https://github.com/SlashNephy/mackerel-operator/releases/download/mackerel-operator-0.3.0/mackerel-operator-0.3.0.tgz
+    version: 0.3.0
+  - apiVersion: v2
     appVersion: 0.2.0
     created: "2026-08-08T11:17:30.486246091Z"
     description: A Kubernetes operator that synchronizes ExternalMonitor resources
@@ -56,4 +67,4 @@ entries:
     urls:
     - https://github.com/SlashNephy/mackerel-operator/releases/download/mackerel-operator-0.1.1/mackerel-operator-0.1.1.tgz
     version: 0.1.1
-generated: "2026-08-08T11:17:30.486267183Z"
+generated: "2026-08-20T03:28:47.203020708Z"
