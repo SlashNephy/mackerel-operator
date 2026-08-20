@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -254,7 +255,7 @@ func TestExternalMonitorReconciler_ReconcileNoopsOwnedMonitor(t *testing.T) {
 			URL: "https://example.com/healthz",
 		},
 	}
-	desired, desiredErr := (&ExternalMonitorReconciler{OwnerID: "prod", HashLength: 7}).externalMonitorSource().FromExternalMonitor(cr)
+	desired, desiredErr := (&ExternalMonitorReconciler{OwnerID: "prod", HashLength: 7}).externalMonitorSource(map[string]string{}).FromExternalMonitor(cr)
 	require.NoError(t, desiredErr)
 
 	k8sClient := fake.NewClientBuilder().
@@ -636,6 +637,7 @@ func newExternalMonitorTestScheme(t *testing.T) *runtime.Scheme {
 	t.Helper()
 
 	scheme := runtime.NewScheme()
+	require.NoError(t, corev1.AddToScheme(scheme))
 	require.NoError(t, mackerelv1alpha1.AddToScheme(scheme))
 	return scheme
 }

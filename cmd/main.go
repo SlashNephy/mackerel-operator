@@ -177,6 +177,8 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	ctx := ctrl.SetupSignalHandler()
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
@@ -209,7 +211,7 @@ func main() {
 		OwnerID:    ownerID,
 		Policy:     policy,
 		HashLength: hashLength,
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ExternalMonitor")
 		os.Exit(1)
 	}
@@ -225,7 +227,7 @@ func main() {
 	}
 
 	setupLog.Info("Starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}

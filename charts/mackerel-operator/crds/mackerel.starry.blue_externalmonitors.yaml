@@ -96,12 +96,45 @@ spec:
                     value:
                       description: |-
                         value is the header value sent verbatim. It is stored in plain text in
-                        the cluster, so avoid credentials until Secret references are supported.
+                        the cluster and Mackerel returns it unmasked, so use valueFrom for
+                        credentials such as an Authorization header.
                       type: string
+                    valueFrom:
+                      description: |-
+                        valueFrom reads the header value from another resource. Exactly one of
+                        value and valueFrom must be set.
+                      properties:
+                        secretKeyRef:
+                          description: |-
+                            secretKeyRef selects a key of a Secret in the namespace of the
+                            ExternalMonitor.
+                          properties:
+                            key:
+                              description: key is the key of the Secret to read the
+                                header value from.
+                              maxLength: 253
+                              minLength: 1
+                              type: string
+                            name:
+                              description: |-
+                                name is the name of the Secret. It must live in the same namespace as the
+                                ExternalMonitor.
+                              maxLength: 253
+                              minLength: 1
+                              type: string
+                          required:
+                          - key
+                          - name
+                          type: object
+                      required:
+                      - secretKeyRef
+                      type: object
                   required:
                   - name
-                  - value
                   type: object
+                  x-kubernetes-validations:
+                  - message: exactly one of value and valueFrom must be set
+                    rule: has(self.value) != has(self.valueFrom)
                 type: array
                 x-kubernetes-list-map-keys:
                 - name
