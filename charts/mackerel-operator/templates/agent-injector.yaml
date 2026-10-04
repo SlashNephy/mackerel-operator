@@ -1,12 +1,17 @@
 {{- if .Values.agentInjector.enabled }}
-{{- if not (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy") }}
+{{- /*
+APIVersions only lists kinds when Helm talks to a cluster. Offline rendering
+(helm template, GitOps tools) falls back to the Kubernetes version instead.
+*/}}
+{{- $hasPolicyAPI := .Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy" }}
+{{- if not (or $hasPolicyAPI (semverCompare ">=1.36.0-0" .Capabilities.KubeVersion.Version)) }}
 {{- fail "agentInjector requires admissionregistration.k8s.io/v1/MutatingAdmissionPolicy (Kubernetes 1.36 or later)" }}
 {{- end }}
 {{- $prefix := "agent.mackerel.starry.blue/" }}
 {{- $image := printf "%s:%s" .Values.agentInjector.image.repository .Values.agentInjector.image.tag }}
 {{- $resources := list }}
 {{- range $field := list "limits" "requests" }}
-{{- with index $.Values.agentInjector.resources $field }}
+{{- with index (default dict $.Values.agentInjector.resources) $field }}
 {{- $quantities := list }}
 {{- range $name, $quantity := . }}
 {{- $quantities = append $quantities (printf "%s: %s" (toJson $name) (toJson (toString $quantity))) }}
@@ -40,6 +45,11 @@ spec:
       expression: |
         !has(object.spec.initContainers) ||
         !object.spec.initContainers.exists(c, c.name == 'mackerel-container-agent')
+    # Adding a volume whose name is already taken would make the Pod invalid.
+    - name: no-volume-conflict
+      expression: |
+        !has(object.spec.volumes) ||
+        !object.spec.volumes.exists(v, v.name in ['mackerel-agent-sa-token', 'mackerel-agent-config'])
   variables:
     - name: annotations
       expression: object.metadata.annotations
@@ -127,6 +137,8 @@ spec:
 ---
 # Lets the agent read metrics from the kubelet. Users bind it to their
 # workload ServiceAccounts with a ClusterRoleBinding.
+# nodes/pods covers the kubelet's /pods (KubeletFineGrainedAuthz, GA in 1.36),
+# so the far broader nodes/proxy is not needed.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -137,7 +149,7 @@ rules:
   - apiGroups:
       - ""
     resources:
-      - nodes/proxy
+      - nodes/pods
       - nodes/stats
       - nodes/spec
     verbs:

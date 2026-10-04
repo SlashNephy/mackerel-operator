@@ -35,6 +35,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
@@ -64,15 +65,16 @@ func TestMain(m *testing.M) {
 }
 
 func run(m *testing.M) int {
-	manifests, err := renderChart(true)
+	manifests, err := renderChart("--api-versions", mapAPIVersion)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
 
 	testEnv := &envtest.Environment{}
-	if dir := firstEnvTestBinaryDir(); dir != "" {
-		testEnv.BinaryAssetsDirectory = dir
+	// BinaryAssetsDirectory takes precedence over KUBEBUILDER_ASSETS, so only set it as a fallback.
+	if os.Getenv("KUBEBUILDER_ASSETS") == "" {
+		testEnv.BinaryAssetsDirectory = newestEnvTestBinaryDir()
 	}
 	cfg, err := testEnv.Start()
 	if err != nil {
@@ -98,20 +100,16 @@ func run(m *testing.M) int {
 	return m.Run()
 }
 
-// renderChart renders only the agent injector template. When withPolicyAPI is
-// false, it renders for a cluster without MutatingAdmissionPolicy.
-func renderChart(withPolicyAPI bool) ([]byte, error) {
-	args := []string{
+// renderChart renders only the agent injector template with extra helm flags.
+func renderChart(extraArgs ...string) ([]byte, error) {
+	args := slices.Concat([]string{
 		"template", "test", chartPath,
 		"--show-only", "templates/agent-injector.yaml",
 		"--set", "agentInjector.enabled=true",
 		// Fixed so that Renovate bumping the default tag does not break the test.
 		"--set", "agentInjector.image.repository=example.com/agent",
 		"--set", "agentInjector.image.tag=test",
-	}
-	if withPolicyAPI {
-		args = append(args, "--api-versions", mapAPIVersion)
-	}
+	}, extraArgs)
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command("helm", args...)
@@ -249,6 +247,9 @@ func TestInjection(t *testing.T) {
 				require.NotNil(t, sidecar.RestartPolicy)
 				assert.Equal(t, corev1.ContainerRestartPolicyAlways, *sidecar.RestartPolicy)
 				assert.Equal(t, "example.com/agent:test", sidecar.Image)
+				assert.Equal(t, corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("128Mi"),
+				}, sidecar.Resources.Limits)
 
 				apiKey := findEnv(sidecar.Env, "MACKEREL_APIKEY")
 				require.NotNil(t, apiKey)
@@ -356,6 +357,21 @@ func TestInjection(t *testing.T) {
 			},
 		},
 		{
+			name: "skips pods whose volume names conflict",
+			pod: func() *corev1.Pod {
+				pod := newPod("volume-conflict", inject, map[string]string{annotationSecret: "mackerel-api-key"})
+				pod.Spec.Volumes = []corev1.Volume{{
+					Name:         tokenVolumeName,
+					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+				}}
+				return pod
+			},
+			assert: func(t *testing.T, pod *corev1.Pod) {
+				assert.Empty(t, pod.Spec.InitContainers)
+				assert.Equal(t, []string{tokenVolumeName}, volumeNames(pod.Spec.Volumes))
+			},
+		},
+		{
 			name: "appends to existing init containers and volumes",
 			pod: func() *corev1.Pod {
 				pod := newPod("existing", inject, map[string]string{annotationSecret: "mackerel-api-key"})
@@ -386,15 +402,50 @@ func TestInjection(t *testing.T) {
 	}
 }
 
-func TestRenderFailsWithoutPolicyAPI(t *testing.T) {
-	_, err := renderChart(false)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "MutatingAdmissionPolicy")
+func TestRenderRequiresPolicyAPI(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr bool
+	}{
+		{
+			name: "cluster serving the policy API",
+			args: []string{"--kube-version", "1.35.0", "--api-versions", mapAPIVersion},
+		},
+		{
+			// helm template and GitOps tools render without a cluster, so only the version is known.
+			name: "offline rendering for 1.36",
+			args: []string{"--kube-version", "1.36.0"},
+		},
+		{
+			name:    "offline rendering for 1.35",
+			args:    []string{"--kube-version", "1.35.0"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := renderChart(tt.args...)
+			if tt.wantErr {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "MutatingAdmissionPolicy")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
-// firstEnvTestBinaryDir locates envtest binaries when the test runs without the
-// Makefile. It picks the newest version because MutatingAdmissionPolicy needs 1.36+.
-func firstEnvTestBinaryDir() string {
+func TestRenderWithoutResources(t *testing.T) {
+	manifests, err := renderChart("--kube-version", "1.36.0", "--set", "agentInjector.resources=null")
+	require.NoError(t, err)
+	assert.Contains(t, string(manifests), "resources: Object.spec.initContainers.resources{}")
+}
+
+// newestEnvTestBinaryDir locates envtest binaries when the test runs without the
+// Makefile. It picks the last entry because MutatingAdmissionPolicy needs 1.36+.
+func newestEnvTestBinaryDir() string {
 	basePath := filepath.Join("..", "..", "bin", "k8s")
 	entries, err := os.ReadDir(basePath)
 	if err != nil {

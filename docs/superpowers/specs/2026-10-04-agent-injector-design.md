@@ -10,7 +10,7 @@ The injector is a `MutatingAdmissionPolicy` and `MutatingAdmissionPolicyBinding`
 
 This avoids a webhook server, webhook TLS certificates, and putting the operator on the Pod creation path. If the operator is down, Pods are still created and still get the sidecar.
 
-The chart is gated behind `agentInjector.enabled` (default `false`). When enabled, the template checks `.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy"` and fails the install on clusters older than 1.36, instead of silently doing nothing.
+The chart is gated behind `agentInjector.enabled` (default `false`). When enabled, the template fails unless `.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy"` or the Kubernetes version is 1.36 or later. Offline rendering (`helm template`, GitOps tools) only knows the version, so the version check keeps it working.
 
 ## Pod interface
 
@@ -34,13 +34,13 @@ The projected token uses `expirationSeconds: 3607`, the same value the ServiceAc
 
 The `secretKeyRef` is `optional: true`. A wrong Secret name or key leaves the app container running and only the agent fails. Without it, a native sidecar that cannot resolve its env keeps the whole Pod in `CreateContainerConfigError`, unlike the original injector where the agent was a regular container.
 
-Only `CREATE` is matched. A Pod that already has a `mackerel-container-agent` init container is skipped.
+Only `CREATE` is matched. Pods that already have a volume named `mackerel-agent-sa-token` or `mackerel-agent-config` are skipped, because adding a duplicate name would make the Pod invalid. A Pod that already has a `mackerel-container-agent` init container is skipped.
 
 Mutations use `JSONPatch`. `ApplyConfiguration` rejects atomic fields such as `fieldRef`, `secretKeyRef`, and `projected.sources`. `Object.*` types are only available inside mutation expressions, not in `variables`, and `cel.bind` is not available.
 
 ## RBAC
 
-The agent reads `nodes/proxy`, `nodes/stats`, and `nodes/spec` from the kubelet. The chart ships a ClusterRole for this. Users bind it to their workload ServiceAccounts themselves, as with the original injector. The operator does not manage these bindings.
+The agent reads `nodes/pods`, `nodes/stats`, and `nodes/spec` from the kubelet. `nodes/pods` covers the kubelet's `/pods` through KubeletFineGrainedAuthz (GA in 1.36), so the original injector's `nodes/proxy` is not granted. `nodes/proxy` also allows reaching any kubelet endpoint. The chart ships a ClusterRole for this. Users bind it to their workload ServiceAccounts themselves, as with the original injector. The operator does not manage these bindings.
 
 ## Values
 

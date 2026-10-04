@@ -207,7 +207,8 @@ The chart can inject [mackerel-container-agent](https://github.com/mackerelio/ma
 into Pods as a native sidecar. It is a `MutatingAdmissionPolicy`, so the
 operator itself is not involved and Pod creation does not depend on it.
 It requires Kubernetes 1.36 or later; installing with it enabled on an older
-cluster fails.
+cluster fails. Offline rendering such as `helm template` checks `--kube-version`
+instead.
 
 ```bash
 helm upgrade --install mackerel-operator mackerel-operator/mackerel-operator \
@@ -217,7 +218,10 @@ helm upgrade --install mackerel-operator mackerel-operator/mackerel-operator \
 
 The agent reads metrics from the kubelet, so bind the chart's ClusterRole
 (`mackerel-operator-agent` for a release named `mackerel-operator`) to the
-ServiceAccount of each workload:
+ServiceAccount of each workload. The role grants `get` on `nodes/pods`,
+`nodes/stats`, and `nodes/spec` for every node, and every container in the Pod
+shares the ServiceAccount token. Bind it only to ServiceAccounts used by Pods
+that run the agent.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -256,8 +260,9 @@ spec:
 | `agent.mackerel.starry.blue/roles` | annotation | no | Passed as `MACKEREL_ROLES`. |
 | `agent.mackerel.starry.blue/config-configmap-name` | annotation | no | ConfigMap whose `mackerel-agent.conf` is used as the agent config. |
 
-The Secret reference is optional: if the Secret or key is missing, the app
-container still starts and only the agent fails. Only newly created Pods are
+The annotation is required, but the Secret it names does not have to exist:
+if the Secret or key is missing, the app container still starts and only the
+agent fails. Only newly created Pods are
 injected, so roll out existing workloads after enabling it.
 
 ## Publishing Helm Chart With GitHub Pages
