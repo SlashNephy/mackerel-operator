@@ -50,6 +50,7 @@ const (
 	sidecarName        = "mackerel-container-agent"
 	tokenVolumeName    = "mackerel-agent-sa-token"
 	configVolumeName   = "mackerel-agent-config"
+	tmpVolumeName      = "mackerel-agent-tmp"
 	labelInject        = "agent.mackerel.starry.blue/inject"
 	annotationSecret   = "agent.mackerel.starry.blue/apikey-secret-name"
 	annotationKey      = "agent.mackerel.starry.blue/apikey-secret-key"
@@ -159,7 +160,7 @@ func waitForPolicy(ctx context.Context) error {
 		if err := k8sClient.Create(ctx, pod); err != nil {
 			return fmt.Errorf("failed to create probe pod: %w", err)
 		}
-		injected := findContainer(pod.Spec.InitContainers, sidecarName) != nil
+		injected := findSidecar(pod.Spec.InitContainers) != nil
 		if err := k8sClient.Delete(ctx, pod, client.GracePeriodSeconds(0)); err != nil {
 			return fmt.Errorf("failed to delete probe pod: %w", err)
 		}
@@ -187,9 +188,9 @@ func newPod(name string, labels, annotations map[string]string) *corev1.Pod {
 	}
 }
 
-func findContainer(containers []corev1.Container, name string) *corev1.Container {
+func findSidecar(containers []corev1.Container) *corev1.Container {
 	for i := range containers {
-		if containers[i].Name == name {
+		if containers[i].Name == sidecarName {
 			return &containers[i]
 		}
 	}
@@ -242,7 +243,7 @@ func TestInjection(t *testing.T) {
 				return pod
 			},
 			assert: func(t *testing.T, pod *corev1.Pod) {
-				sidecar := findContainer(pod.Spec.InitContainers, sidecarName)
+				sidecar := findSidecar(pod.Spec.InitContainers)
 				require.NotNil(t, sidecar)
 				require.NotNil(t, sidecar.RestartPolicy)
 				assert.Equal(t, corev1.ContainerRestartPolicyAlways, *sidecar.RestartPolicy)
@@ -250,6 +251,14 @@ func TestInjection(t *testing.T) {
 				assert.Equal(t, corev1.ResourceList{
 					corev1.ResourceMemory: resource.MustParse("128Mi"),
 				}, sidecar.Resources.Limits)
+				assert.Equal(t, &corev1.SecurityContext{
+					RunAsNonRoot:             new(true),
+					RunAsUser:                new(int64(65532)),
+					AllowPrivilegeEscalation: new(false),
+					ReadOnlyRootFilesystem:   new(true),
+					Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+					SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+				}, sidecar.SecurityContext)
 
 				apiKey := findEnv(sidecar.Env, "MACKEREL_APIKEY")
 				require.NotNil(t, apiKey)
@@ -266,6 +275,7 @@ func TestInjection(t *testing.T) {
 					"MACKEREL_KUBERNETES_KUBELET_INSECURE_TLS":   "true",
 					"MACKEREL_ROLES":                             "service:role",
 					"MACKEREL_AGENT_CONFIG":                      "/etc/mackerel-agent/mackerel-agent.conf",
+					"TMPDIR":                                     "/var/tmp",
 				} {
 					env := findEnv(sidecar.Env, name)
 					if assert.NotNil(t, env, name) {
@@ -287,8 +297,9 @@ func TestInjection(t *testing.T) {
 				assert.ElementsMatch(t, []corev1.VolumeMount{
 					{Name: tokenVolumeName, MountPath: "/var/run/secrets/kubernetes.io/serviceaccount", ReadOnly: true},
 					{Name: configVolumeName, MountPath: "/etc/mackerel-agent", ReadOnly: true},
+					{Name: tmpVolumeName, MountPath: "/var/tmp"},
 				}, sidecar.VolumeMounts)
-				assert.ElementsMatch(t, []string{tokenVolumeName, configVolumeName}, volumeNames(pod.Spec.Volumes))
+				assert.ElementsMatch(t, []string{tokenVolumeName, configVolumeName, tmpVolumeName}, volumeNames(pod.Spec.Volumes))
 
 				for _, v := range pod.Spec.Volumes {
 					switch v.Name {
@@ -297,6 +308,8 @@ func TestInjection(t *testing.T) {
 						require.Len(t, v.Projected.Sources, 3)
 						require.NotNil(t, v.Projected.Sources[0].ServiceAccountToken)
 						assert.Equal(t, int64(3607), *v.Projected.Sources[0].ServiceAccountToken.ExpirationSeconds)
+					case tmpVolumeName:
+						assert.NotNil(t, v.EmptyDir)
 					case configVolumeName:
 						require.NotNil(t, v.ConfigMap)
 						assert.Equal(t, "agent-config", v.ConfigMap.Name)
@@ -313,7 +326,7 @@ func TestInjection(t *testing.T) {
 				})
 			},
 			assert: func(t *testing.T, pod *corev1.Pod) {
-				sidecar := findContainer(pod.Spec.InitContainers, sidecarName)
+				sidecar := findSidecar(pod.Spec.InitContainers)
 				require.NotNil(t, sidecar)
 				apiKey := findEnv(sidecar.Env, "MACKEREL_APIKEY")
 				require.NotNil(t, apiKey)
@@ -321,7 +334,7 @@ func TestInjection(t *testing.T) {
 				assert.Equal(t, "apiKey", apiKey.ValueFrom.SecretKeyRef.Key)
 				assert.Nil(t, findEnv(sidecar.Env, "MACKEREL_ROLES"))
 				assert.Nil(t, findEnv(sidecar.Env, "MACKEREL_AGENT_CONFIG"))
-				assert.Equal(t, []string{tokenVolumeName}, volumeNames(pod.Spec.Volumes))
+				assert.Equal(t, []string{tokenVolumeName, tmpVolumeName}, volumeNames(pod.Spec.Volumes))
 			},
 		},
 		{
@@ -361,14 +374,14 @@ func TestInjection(t *testing.T) {
 			pod: func() *corev1.Pod {
 				pod := newPod("volume-conflict", inject, map[string]string{annotationSecret: "mackerel-api-key"})
 				pod.Spec.Volumes = []corev1.Volume{{
-					Name:         tokenVolumeName,
+					Name:         tmpVolumeName,
 					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 				}}
 				return pod
 			},
 			assert: func(t *testing.T, pod *corev1.Pod) {
 				assert.Empty(t, pod.Spec.InitContainers)
-				assert.Equal(t, []string{tokenVolumeName}, volumeNames(pod.Spec.Volumes))
+				assert.Equal(t, []string{tmpVolumeName}, volumeNames(pod.Spec.Volumes))
 			},
 		},
 		{
@@ -400,6 +413,39 @@ func TestInjection(t *testing.T) {
 			tt.assert(t, pod)
 		})
 	}
+}
+
+// TestRestrictedNamespace checks that the injected sidecar does not make a Pod
+// violate the restricted Pod Security Standard.
+func TestRestrictedNamespace(t *testing.T) {
+	ctx := context.Background()
+	const namespace = "agent-injector-restricted"
+
+	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+		Name:   namespace,
+		Labels: map[string]string{"pod-security.kubernetes.io/enforce": "restricted"},
+	}}
+	require.NoError(t, k8sClient.Create(ctx, ns))
+	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: "default", Namespace: namespace}}
+	require.NoError(t, client.IgnoreAlreadyExists(k8sClient.Create(ctx, sa)))
+
+	pod := newPod("restricted",
+		map[string]string{labelInject: "true"},
+		map[string]string{annotationSecret: "mackerel-api-key"},
+	)
+	pod.Namespace = namespace
+	pod.Spec.SecurityContext = &corev1.PodSecurityContext{
+		RunAsNonRoot:   new(true),
+		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+	pod.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+		RunAsUser:                new(int64(1000)),
+		AllowPrivilegeEscalation: new(false),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+	}
+
+	require.NoError(t, k8sClient.Create(ctx, pod))
+	assert.NotNil(t, findSidecar(pod.Spec.InitContainers))
 }
 
 func TestRenderRequiresPolicyAPI(t *testing.T) {

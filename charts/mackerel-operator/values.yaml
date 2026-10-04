@@ -69,5 +69,18 @@ agentInjector:
   resources:
     limits:
       memory: 128Mi
+  # Applied to the injected container. The defaults satisfy the restricted Pod
+  # Security Standard. The image has no USER, so runAsUser must be numeric.
+  # /var/tmp is an injected emptyDir, so the root filesystem can be read-only.
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+    seccompProfile:
+      type: RuntimeDefault
   # Restricts injection to matching namespaces in addition to the Pod label.
   namespaceSelector: {}

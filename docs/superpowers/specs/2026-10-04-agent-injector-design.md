@@ -34,6 +34,8 @@ The projected token uses `expirationSeconds: 3607`, the same value the ServiceAc
 
 The `secretKeyRef` is `optional: true`. A wrong Secret name or key leaves the app container running and only the agent fails. Without it, a native sidecar that cannot resolve its env keeps the whole Pod in `CreateContainerConfigError`, unlike the original injector where the agent was a regular container.
 
+The container gets `agentInjector.securityContext` from values. The default (UID 65532, `runAsNonRoot`, no privilege escalation, read-only root filesystem, all capabilities dropped, `RuntimeDefault` seccomp) satisfies the `restricted` Pod Security Standard. It is added as a separate JSONPatch whose value is rendered as an untyped CEL map, so any field of `SecurityContext` can be set without listing typed `Object.*` constructors. Each element is wrapped in `dyn()` because CEL rejects map literals with mixed value types. The agent creates `/var/tmp/mackerel-container-agent`, so an `emptyDir` named `mackerel-agent-tmp` is mounted at `/var/tmp` and `TMPDIR` points there for plugins; this keeps the root filesystem read-only.
+
 Only `CREATE` is matched. Pods that already have a volume named `mackerel-agent-sa-token` or `mackerel-agent-config` are skipped, because adding a duplicate name would make the Pod invalid. A Pod that already has a `mackerel-container-agent` init container is skipped.
 
 Mutations use `JSONPatch`. `ApplyConfiguration` rejects atomic fields such as `fieldRef`, `secretKeyRef`, and `projected.sources`. `Object.*` types are only available inside mutation expressions, not in `variables`, and `cel.bind` is not available.

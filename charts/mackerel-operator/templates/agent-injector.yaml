@@ -49,7 +49,7 @@ spec:
     - name: no-volume-conflict
       expression: |
         !has(object.spec.volumes) ||
-        !object.spec.volumes.exists(v, v.name in ['mackerel-agent-sa-token', 'mackerel-agent-config'])
+        !object.spec.volumes.exists(v, v.name in ['mackerel-agent-sa-token', 'mackerel-agent-config', 'mackerel-agent-tmp'])
   variables:
     - name: annotations
       expression: object.metadata.annotations
@@ -70,6 +70,8 @@ spec:
               resources: Object.spec.initContainers.resources{ {{- join ", " $resources -}} },
               env: [
                 Object.spec.initContainers.env{name: 'MACKEREL_CONTAINER_PLATFORM', value: 'kubernetes'},
+                // Plugins write temporary files through os.TempDir; keep them on the writable volume.
+                Object.spec.initContainers.env{name: 'TMPDIR', value: '/var/tmp'},
                 // The read-only port 10255 is disabled on most clusters; use HTTPS on 10250.
                 Object.spec.initContainers.env{name: 'MACKEREL_KUBERNETES_KUBELET_READ_ONLY_PORT', value: '0'},
                 {{- if .Values.agentInjector.kubeletInsecureTLS }}
@@ -93,12 +95,22 @@ spec:
                   ? [Object.spec.initContainers.env{name: 'MACKEREL_AGENT_CONFIG', value: '/etc/mackerel-agent/mackerel-agent.conf'}]
                   : []),
               volumeMounts: [
-                Object.spec.initContainers.volumeMounts{name: 'mackerel-agent-sa-token', mountPath: '/var/run/secrets/kubernetes.io/serviceaccount', readOnly: true}
+                Object.spec.initContainers.volumeMounts{name: 'mackerel-agent-sa-token', mountPath: '/var/run/secrets/kubernetes.io/serviceaccount', readOnly: true},
+                // The agent creates /var/tmp/mackerel-container-agent, so this keeps it working with readOnlyRootFilesystem.
+                Object.spec.initContainers.volumeMounts{name: 'mackerel-agent-tmp', mountPath: '/var/tmp'}
               ]
               + (variables.hasConfig
                   ? [Object.spec.initContainers.volumeMounts{name: 'mackerel-agent-config', mountPath: '/etc/mackerel-agent', readOnly: true}]
                   : [])
             }}]
+          {{- with .Values.agentInjector.securityContext }}
+          // A plain map, not a typed Object, so that any securityContext from values can be passed as JSON.
+          + [JSONPatch{
+              op: 'add',
+              path: '/spec/initContainers/' + string(has(object.spec.initContainers) ? size(object.spec.initContainers) : 0) + '/securityContext',
+              value: {{ include "mackerel-operator.celLiteral" . }}
+            }]
+          {{- end }}
           + (has(object.spec.volumes) ? [] : [JSONPatch{op: 'add', path: '/spec/volumes', value: []}])
           // The ServiceAccount admission plugin runs before admission policies, so the sidecar gets no token mount.
           // Add a projected volume built like kube-api-access-*. The agent reads the token only once at startup,
@@ -110,6 +122,10 @@ spec:
                 Object.spec.volumes.projected.sources{configMap: Object.spec.volumes.projected.sources.configMap{name: 'kube-root-ca.crt', items: [Object.spec.volumes.projected.sources.configMap.items{key: 'ca.crt', path: 'ca.crt'}]}},
                 Object.spec.volumes.projected.sources{downwardAPI: Object.spec.volumes.projected.sources.downwardAPI{items: [Object.spec.volumes.projected.sources.downwardAPI.items{path: 'namespace', fieldRef: Object.spec.volumes.projected.sources.downwardAPI.items.fieldRef{fieldPath: 'metadata.namespace'}}]}}
               ]}
+            }}]
+          + [JSONPatch{op: 'add', path: '/spec/volumes/-', value: Object.spec.volumes{
+              name: 'mackerel-agent-tmp',
+              emptyDir: Object.spec.volumes.emptyDir{}
             }}]
           + (variables.hasConfig
               ? [JSONPatch{op: 'add', path: '/spec/volumes/-', value: Object.spec.volumes{
