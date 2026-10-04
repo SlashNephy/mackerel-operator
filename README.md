@@ -1,18 +1,37 @@
 # mackerel-operator
 
-`mackerel-operator` synchronizes Kubernetes `ExternalMonitor` resources with Mackerel external URL monitors.
+`mackerel-operator` manages Mackerel resources from Kubernetes. It ships as a
+Helm chart with two independent components.
 
-## MVP Scope
+## Features
 
-- Manages Mackerel HTTP/HTTPS external monitors.
-- Watches namespaced `ExternalMonitor` resources across the cluster.
+### ExternalMonitor controller
+
+- Synchronizes namespaced `ExternalMonitor` resources across the cluster with
+  Mackerel HTTP/HTTPS external monitors.
+- Manages every external monitor setting, including request headers, request
+  body, check attempts, redirects, certificate checks, mute state, and the IP
+  version (`dualstack`).
+- Reads header values from Secrets in the same namespace and re-syncs when a
+  Secret rotates.
+- Adopts an existing monitor with the same name when its settings match the CR.
+- Reports the result through the `Ready` condition (`Synced`, `InvalidSpec`,
+  `OwnershipLost`, `SecretNotFound`, `SecretError`) and shows the monitor ID in
+  `kubectl get externalmonitors`.
+- Supports `--policy=upsert-only` and `--policy=sync`. See
+  [Deletion Policy](#deletion-policy).
 - Reads the Mackerel API key from `MACKEREL_APIKEY`.
-- Supports `--policy=upsert-only` and `--policy=sync`.
 - Stores ownership metadata in the Mackerel monitor memo:
 
 ```text
 <!-- heritage=mackerel-operator,resource=externalmonitor/default/api-health,owner=prod,hash=deadbee -->
 ```
+
+### mackerel-container-agent injector
+
+- Injects mackerel-container-agent into labeled Pods as a native sidecar via a
+  `MutatingAdmissionPolicy`. See
+  [Injecting mackerel-container-agent](#injecting-mackerel-container-agent).
 
 ## Example
 
@@ -171,7 +190,7 @@ mise exec -- go run ./cmd/main.go --policy=upsert-only --owner-id=default --hash
 
 ## Installing With Helm
 
-Once GitHub Pages publishing is enabled, add the chart repository:
+Add the chart repository:
 
 ```bash
 helm repo add mackerel-operator https://slashnephy.github.io/mackerel-operator
@@ -192,12 +211,12 @@ Install the chart:
 ```bash
 helm install mackerel-operator mackerel-operator/mackerel-operator \
   --namespace mackerel-operator-system \
-  --create-namespace \
-  --set image.repository=ghcr.io/slashnephy/mackerel-operator \
-  --set image.tag=0.1.2
+  --create-namespace
 ```
 
 The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds/`.
+The image tag defaults to the chart's `appVersion`. Set `policy`, `ownerID`, and
+`hashLength` in the values to change the corresponding operator flags.
 The release workflow publishes `ghcr.io/slashnephy/mackerel-operator:<chart version>`
 and `ghcr.io/slashnephy/mackerel-operator:latest` to GHCR.
 
