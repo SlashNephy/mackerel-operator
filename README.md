@@ -201,6 +201,65 @@ The chart installs the `ExternalMonitor` CRD from `charts/mackerel-operator/crds
 The release workflow publishes `ghcr.io/slashnephy/mackerel-operator:<chart version>`
 and `ghcr.io/slashnephy/mackerel-operator:latest` to GHCR.
 
+## Injecting mackerel-container-agent
+
+The chart can inject [mackerel-container-agent](https://github.com/mackerelio/mackerel-container-agent)
+into Pods as a native sidecar. It is a `MutatingAdmissionPolicy`, so the
+operator itself is not involved and Pod creation does not depend on it.
+It requires Kubernetes 1.36 or later; installing with it enabled on an older
+cluster fails.
+
+```bash
+helm upgrade --install mackerel-operator mackerel-operator/mackerel-operator \
+  --namespace mackerel-operator-system \
+  --set agentInjector.enabled=true
+```
+
+The agent reads metrics from the kubelet, so bind the chart's ClusterRole
+(`mackerel-operator-agent` for a release named `mackerel-operator`) to the
+ServiceAccount of each workload:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: my-app-mackerel-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: mackerel-operator-agent
+subjects:
+  - kind: ServiceAccount
+    name: my-app
+    namespace: app
+```
+
+Put the agent's API key in a Secret in the Pod's namespace, then label and
+annotate the Pod template:
+
+```yaml
+spec:
+  template:
+    metadata:
+      labels:
+        agent.mackerel.starry.blue/inject: "true"
+      annotations:
+        agent.mackerel.starry.blue/apikey-secret-name: mackerel-agent-api-key
+        agent.mackerel.starry.blue/roles: "my-service:app"
+```
+
+| Key | Kind | Required | Meaning |
+|---|---|---|---|
+| `agent.mackerel.starry.blue/inject` | label | yes | `"true"` opts the Pod in. |
+| `agent.mackerel.starry.blue/apikey-secret-name` | annotation | yes | Secret holding the API key. Nothing is injected without it. |
+| `agent.mackerel.starry.blue/apikey-secret-key` | annotation | no | Key in that Secret. Defaults to `MACKEREL_APIKEY`. |
+| `agent.mackerel.starry.blue/roles` | annotation | no | Passed as `MACKEREL_ROLES`. |
+| `agent.mackerel.starry.blue/config-configmap-name` | annotation | no | ConfigMap whose `mackerel-agent.conf` is used as the agent config. |
+
+The Secret reference is optional: if the Secret or key is missing, the app
+container still starts and only the agent fails. Only newly created Pods are
+injected, so roll out existing workloads after enabling it.
+
 ## Publishing Helm Chart With GitHub Pages
 
 This repository includes `.github/workflows/release-chart.yml`, which uses

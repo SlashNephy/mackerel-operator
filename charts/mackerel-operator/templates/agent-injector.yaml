@@ -1,0 +1,145 @@
+{{- if .Values.agentInjector.enabled }}
+{{- if not (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/MutatingAdmissionPolicy") }}
+{{- fail "agentInjector requires admissionregistration.k8s.io/v1/MutatingAdmissionPolicy (Kubernetes 1.36 or later)" }}
+{{- end }}
+{{- $prefix := "agent.mackerel.starry.blue/" }}
+{{- $image := printf "%s:%s" .Values.agentInjector.image.repository .Values.agentInjector.image.tag }}
+{{- $resources := list }}
+{{- range $field := list "limits" "requests" }}
+{{- with index $.Values.agentInjector.resources $field }}
+{{- $quantities := list }}
+{{- range $name, $quantity := . }}
+{{- $quantities = append $quantities (printf "%s: %s" (toJson $name) (toJson (toString $quantity))) }}
+{{- end }}
+{{- $resources = append $resources (printf "%s: {%s}" $field (join ", " $quantities)) }}
+{{- end }}
+{{- end }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicy
+metadata:
+  name: {{ include "mackerel-operator.fullname" . }}-agent-injector
+  labels:
+    {{- include "mackerel-operator.labels" . | nindent 4 }}
+spec:
+  # A failing policy must not block Pod creation.
+  failurePolicy: Ignore
+  reinvocationPolicy: Never
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        # Containers cannot change after creation, so only CREATE is matched.
+        operations: ["CREATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: has-apikey-secret-name
+      expression: |
+        has(object.metadata.annotations) &&
+        '{{ $prefix }}apikey-secret-name' in object.metadata.annotations
+    - name: not-injected
+      expression: |
+        !has(object.spec.initContainers) ||
+        !object.spec.initContainers.exists(c, c.name == 'mackerel-container-agent')
+  variables:
+    - name: annotations
+      expression: object.metadata.annotations
+    - name: hasConfig
+      expression: "'{{ $prefix }}config-configmap-name' in variables.annotations"
+  mutations:
+    # JSONPatch, because ApplyConfiguration cannot set atomic fields such as fieldRef and secretKeyRef.
+    # Object.* types are not available in variables, so the objects are built here.
+    - patchType: JSONPatch
+      jsonPatch:
+        expression: |
+          (has(object.spec.initContainers) ? [] : [JSONPatch{op: 'add', path: '/spec/initContainers', value: []}])
+          + [JSONPatch{op: 'add', path: '/spec/initContainers/-', value: Object.spec.initContainers{
+              name: 'mackerel-container-agent',
+              image: {{ toJson $image }},
+              // A native sidecar, so that Jobs can still complete.
+              restartPolicy: 'Always',
+              resources: Object.spec.initContainers.resources{ {{- join ", " $resources -}} },
+              env: [
+                Object.spec.initContainers.env{name: 'MACKEREL_CONTAINER_PLATFORM', value: 'kubernetes'},
+                // The read-only port 10255 is disabled on most clusters; use HTTPS on 10250.
+                Object.spec.initContainers.env{name: 'MACKEREL_KUBERNETES_KUBELET_READ_ONLY_PORT', value: '0'},
+                {{- if .Values.agentInjector.kubeletInsecureTLS }}
+                // The agent checks whether the variable is set, not its value.
+                Object.spec.initContainers.env{name: 'MACKEREL_KUBERNETES_KUBELET_INSECURE_TLS', value: 'true'},
+                {{- end }}
+                Object.spec.initContainers.env{name: 'MACKEREL_KUBERNETES_KUBELET_HOST', valueFrom: Object.spec.initContainers.env.valueFrom{fieldRef: Object.spec.initContainers.env.valueFrom.fieldRef{fieldPath: 'status.hostIP'}}},
+                Object.spec.initContainers.env{name: 'MACKEREL_KUBERNETES_NAMESPACE', valueFrom: Object.spec.initContainers.env.valueFrom{fieldRef: Object.spec.initContainers.env.valueFrom.fieldRef{fieldPath: 'metadata.namespace'}}},
+                Object.spec.initContainers.env{name: 'MACKEREL_KUBERNETES_POD_NAME', valueFrom: Object.spec.initContainers.env.valueFrom{fieldRef: Object.spec.initContainers.env.valueFrom.fieldRef{fieldPath: 'metadata.name'}}},
+                // Let the app container start even if the Secret is missing.
+                Object.spec.initContainers.env{name: 'MACKEREL_APIKEY', valueFrom: Object.spec.initContainers.env.valueFrom{secretKeyRef: Object.spec.initContainers.env.valueFrom.secretKeyRef{
+                  name: variables.annotations['{{ $prefix }}apikey-secret-name'],
+                  key: variables.annotations[?'{{ $prefix }}apikey-secret-key'].orValue('MACKEREL_APIKEY'),
+                  optional: true
+                }}}
+              ]
+              + ('{{ $prefix }}roles' in variables.annotations
+                  ? [Object.spec.initContainers.env{name: 'MACKEREL_ROLES', value: variables.annotations['{{ $prefix }}roles']}]
+                  : [])
+              + (variables.hasConfig
+                  ? [Object.spec.initContainers.env{name: 'MACKEREL_AGENT_CONFIG', value: '/etc/mackerel-agent/mackerel-agent.conf'}]
+                  : []),
+              volumeMounts: [
+                Object.spec.initContainers.volumeMounts{name: 'mackerel-agent-sa-token', mountPath: '/var/run/secrets/kubernetes.io/serviceaccount', readOnly: true}
+              ]
+              + (variables.hasConfig
+                  ? [Object.spec.initContainers.volumeMounts{name: 'mackerel-agent-config', mountPath: '/etc/mackerel-agent', readOnly: true}]
+                  : [])
+            }}]
+          + (has(object.spec.volumes) ? [] : [JSONPatch{op: 'add', path: '/spec/volumes', value: []}])
+          // The ServiceAccount admission plugin runs before admission policies, so the sidecar gets no token mount.
+          // Add a projected volume built like kube-api-access-*. The agent reads the token only once at startup,
+          // so keep 3607 seconds, which the apiserver extends; do not change it to 3600.
+          + [JSONPatch{op: 'add', path: '/spec/volumes/-', value: Object.spec.volumes{
+              name: 'mackerel-agent-sa-token',
+              projected: Object.spec.volumes.projected{sources: [
+                Object.spec.volumes.projected.sources{serviceAccountToken: Object.spec.volumes.projected.sources.serviceAccountToken{path: 'token', expirationSeconds: 3607}},
+                Object.spec.volumes.projected.sources{configMap: Object.spec.volumes.projected.sources.configMap{name: 'kube-root-ca.crt', items: [Object.spec.volumes.projected.sources.configMap.items{key: 'ca.crt', path: 'ca.crt'}]}},
+                Object.spec.volumes.projected.sources{downwardAPI: Object.spec.volumes.projected.sources.downwardAPI{items: [Object.spec.volumes.projected.sources.downwardAPI.items{path: 'namespace', fieldRef: Object.spec.volumes.projected.sources.downwardAPI.items.fieldRef{fieldPath: 'metadata.namespace'}}]}}
+              ]}
+            }}]
+          + (variables.hasConfig
+              ? [JSONPatch{op: 'add', path: '/spec/volumes/-', value: Object.spec.volumes{
+                  name: 'mackerel-agent-config',
+                  configMap: Object.spec.volumes.configMap{name: variables.annotations['{{ $prefix }}config-configmap-name']}
+                }}]
+              : [])
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingAdmissionPolicyBinding
+metadata:
+  name: {{ include "mackerel-operator.fullname" . }}-agent-injector
+  labels:
+    {{- include "mackerel-operator.labels" . | nindent 4 }}
+spec:
+  policyName: {{ include "mackerel-operator.fullname" . }}-agent-injector
+  matchResources:
+    objectSelector:
+      matchLabels:
+        {{ $prefix }}inject: "true"
+    {{- with .Values.agentInjector.namespaceSelector }}
+    namespaceSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+---
+# Lets the agent read metrics from the kubelet. Users bind it to their
+# workload ServiceAccounts with a ClusterRoleBinding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "mackerel-operator.fullname" . }}-agent
+  labels:
+    {{- include "mackerel-operator.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/proxy
+      - nodes/stats
+      - nodes/spec
+    verbs:
+      - get
+{{- end }}
