@@ -17,6 +17,12 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # test/agentinjector renders the chart with helm.
+      - name: Setup helm
+        uses: jdx/mise-action@94c60b39bc2d90ab2f9bab27f38d3cc4812c1834 # v5.1.0
+        with:
+          install_args: helm
+
       - name: Running Tests
         run: |
           go mod tidy

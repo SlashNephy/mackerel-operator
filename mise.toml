@@ -1,4 +1,5 @@
 [tools]
 go = "1.27.1"
 helm = "4.3.0"
+kind = "0.33.0"
 kubebuilder = "4.16.0"

@@ -54,3 +54,20 @@ resources:
 nodeSelector: {}
 tolerations: []
 affinity: {}
+
+# Injects mackerel-container-agent as a native sidecar into Pods labelled
+# agent.mackerel.starry.blue/inject=true. Implemented with a
+# MutatingAdmissionPolicy, so it requires Kubernetes 1.36 or later.
+agentInjector:
+  enabled: false
+  image:
+    repository: mackerel/mackerel-container-agent
+    tag: v0.13.4-plugins
+  # Skip verifying the kubelet serving certificate. Most kubelet certificates
+  # are not issued for the node IP the agent connects to.
+  kubeletInsecureTLS: true
+  resources:
+    limits:
+      memory: 128Mi
+  # Restricts injection to matching namespaces in addition to the Pod label.
+  namespaceSelector: {}
