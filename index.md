@@ -265,6 +265,12 @@ if the Secret or key is missing, the app container still starts and only the
 agent fails. Only newly created Pods are
 injected, so roll out existing workloads after enabling it.
 
+The injected container runs as UID 65532 with a securityContext that satisfies
+the `restricted` Pod Security Standard, so it can be used in namespaces that
+enforce it, and with a read-only root filesystem. `/var/tmp` is an injected
+`emptyDir` (`TMPDIR` points there for plugins). Override
+`agentInjector.securityContext` to change it.
+
 ## Publishing Helm Chart With GitHub Pages
 
 This repository includes `.github/workflows/release-chart.yml`, which uses
