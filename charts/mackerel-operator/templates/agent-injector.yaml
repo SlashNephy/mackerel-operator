@@ -99,6 +99,14 @@ spec:
                   ? [Object.spec.initContainers.volumeMounts{name: 'mackerel-agent-config', mountPath: '/etc/mackerel-agent', readOnly: true}]
                   : [])
             }}]
+          {{- with .Values.agentInjector.securityContext }}
+          // A plain map, not a typed Object, so that any securityContext from values can be passed as JSON.
+          + [JSONPatch{
+              op: 'add',
+              path: '/spec/initContainers/' + string(has(object.spec.initContainers) ? size(object.spec.initContainers) : 0) + '/securityContext',
+              value: {{ include "mackerel-operator.celLiteral" . }}
+            }]
+          {{- end }}
           + (has(object.spec.volumes) ? [] : [JSONPatch{op: 'add', path: '/spec/volumes', value: []}])
           // The ServiceAccount admission plugin runs before admission policies, so the sidecar gets no token mount.
           // Add a projected volume built like kube-api-access-*. The agent reads the token only once at startup,

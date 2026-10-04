@@ -55,3 +55,25 @@ Create the service account name.
 {{- default "default" .Values.serviceAccount.name -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Render a value from values.yaml as a CEL literal. Every element is wrapped in
+dyn() because CEL rejects map and list literals whose elements differ in type.
+*/}}
+{{- define "mackerel-operator.celLiteral" -}}
+{{- if kindIs "map" . -}}
+{{- $entries := list -}}
+{{- range $key, $value := . -}}
+{{- $entries = append $entries (printf "%s: dyn(%s)" (toJson $key) (include "mackerel-operator.celLiteral" $value)) -}}
+{{- end -}}
+{{- printf "{%s}" (join ", " $entries) -}}
+{{- else if kindIs "slice" . -}}
+{{- $items := list -}}
+{{- range . -}}
+{{- $items = append $items (printf "dyn(%s)" (include "mackerel-operator.celLiteral" .)) -}}
+{{- end -}}
+{{- printf "[%s]" (join ", " $items) -}}
+{{- else -}}
+{{- toJson . -}}
+{{- end -}}
+{{- end -}}
