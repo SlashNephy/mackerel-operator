@@ -33,6 +33,16 @@ Helm chart with two independent components.
   `MutatingAdmissionPolicy`. See
   [Injecting mackerel-container-agent](#injecting-mackerel-container-agent).
 
+## Requirements
+
+| Component | Kubernetes | Why |
+|---|---|---|
+| ExternalMonitor controller | 1.25 or later | The CRD validates specs with CEL rules (`x-kubernetes-validations`). Kubernetes 1.24 drops these rules silently, so invalid specs are accepted. |
+| mackerel-container-agent injector | 1.36 or later | It is a `MutatingAdmissionPolicy`. |
+
+The injector is disabled by default (`agentInjector.enabled: false`), so the
+chart installs on 1.25 or later as long as it stays disabled.
+
 ## Example
 
 ```yaml
