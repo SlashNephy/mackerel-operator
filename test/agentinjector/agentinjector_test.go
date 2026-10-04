@@ -50,6 +50,7 @@ const (
 	sidecarName        = "mackerel-container-agent"
 	tokenVolumeName    = "mackerel-agent-sa-token"
 	configVolumeName   = "mackerel-agent-config"
+	tmpVolumeName      = "mackerel-agent-tmp"
 	labelInject        = "agent.mackerel.starry.blue/inject"
 	annotationSecret   = "agent.mackerel.starry.blue/apikey-secret-name"
 	annotationKey      = "agent.mackerel.starry.blue/apikey-secret-key"
@@ -254,6 +255,7 @@ func TestInjection(t *testing.T) {
 					RunAsNonRoot:             new(true),
 					RunAsUser:                new(int64(65532)),
 					AllowPrivilegeEscalation: new(false),
+					ReadOnlyRootFilesystem:   new(true),
 					Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 					SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 				}, sidecar.SecurityContext)
@@ -273,6 +275,7 @@ func TestInjection(t *testing.T) {
 					"MACKEREL_KUBERNETES_KUBELET_INSECURE_TLS":   "true",
 					"MACKEREL_ROLES":                             "service:role",
 					"MACKEREL_AGENT_CONFIG":                      "/etc/mackerel-agent/mackerel-agent.conf",
+					"TMPDIR":                                     "/var/tmp",
 				} {
 					env := findEnv(sidecar.Env, name)
 					if assert.NotNil(t, env, name) {
@@ -294,8 +297,9 @@ func TestInjection(t *testing.T) {
 				assert.ElementsMatch(t, []corev1.VolumeMount{
 					{Name: tokenVolumeName, MountPath: "/var/run/secrets/kubernetes.io/serviceaccount", ReadOnly: true},
 					{Name: configVolumeName, MountPath: "/etc/mackerel-agent", ReadOnly: true},
+					{Name: tmpVolumeName, MountPath: "/var/tmp"},
 				}, sidecar.VolumeMounts)
-				assert.ElementsMatch(t, []string{tokenVolumeName, configVolumeName}, volumeNames(pod.Spec.Volumes))
+				assert.ElementsMatch(t, []string{tokenVolumeName, configVolumeName, tmpVolumeName}, volumeNames(pod.Spec.Volumes))
 
 				for _, v := range pod.Spec.Volumes {
 					switch v.Name {
@@ -304,6 +308,8 @@ func TestInjection(t *testing.T) {
 						require.Len(t, v.Projected.Sources, 3)
 						require.NotNil(t, v.Projected.Sources[0].ServiceAccountToken)
 						assert.Equal(t, int64(3607), *v.Projected.Sources[0].ServiceAccountToken.ExpirationSeconds)
+					case tmpVolumeName:
+						assert.NotNil(t, v.EmptyDir)
 					case configVolumeName:
 						require.NotNil(t, v.ConfigMap)
 						assert.Equal(t, "agent-config", v.ConfigMap.Name)
@@ -328,7 +334,7 @@ func TestInjection(t *testing.T) {
 				assert.Equal(t, "apiKey", apiKey.ValueFrom.SecretKeyRef.Key)
 				assert.Nil(t, findEnv(sidecar.Env, "MACKEREL_ROLES"))
 				assert.Nil(t, findEnv(sidecar.Env, "MACKEREL_AGENT_CONFIG"))
-				assert.Equal(t, []string{tokenVolumeName}, volumeNames(pod.Spec.Volumes))
+				assert.Equal(t, []string{tokenVolumeName, tmpVolumeName}, volumeNames(pod.Spec.Volumes))
 			},
 		},
 		{
@@ -368,14 +374,14 @@ func TestInjection(t *testing.T) {
 			pod: func() *corev1.Pod {
 				pod := newPod("volume-conflict", inject, map[string]string{annotationSecret: "mackerel-api-key"})
 				pod.Spec.Volumes = []corev1.Volume{{
-					Name:         tokenVolumeName,
+					Name:         tmpVolumeName,
 					VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 				}}
 				return pod
 			},
 			assert: func(t *testing.T, pod *corev1.Pod) {
 				assert.Empty(t, pod.Spec.InitContainers)
-				assert.Equal(t, []string{tokenVolumeName}, volumeNames(pod.Spec.Volumes))
+				assert.Equal(t, []string{tmpVolumeName}, volumeNames(pod.Spec.Volumes))
 			},
 		},
 		{

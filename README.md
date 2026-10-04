@@ -267,8 +267,9 @@ injected, so roll out existing workloads after enabling it.
 
 The injected container runs as UID 65532 with a securityContext that satisfies
 the `restricted` Pod Security Standard, so it can be used in namespaces that
-enforce it. Override `agentInjector.securityContext` to change it. The agent
-writes to `/var/tmp`, so `readOnlyRootFilesystem: true` breaks it.
+enforce it, and with a read-only root filesystem. `/var/tmp` is an injected
+`emptyDir` (`TMPDIR` points there for plugins). Override
+`agentInjector.securityContext` to change it.
 
 ## Publishing Helm Chart With GitHub Pages
 
