@@ -62,7 +62,7 @@ agentInjector:
   enabled: false
   image:
     repository: mackerel/mackerel-container-agent
-    tag: v0.13.4-plugins
+    tag: v0.13.4-plugins@sha256:46164d96395a600704e1c0ed1f998555314b10c22f98352a43d23521ece0df9b
   # Skip verifying the kubelet serving certificate. Most kubelet certificates
   # are not issued for the node IP the agent connects to.
   kubeletInsecureTLS: true
