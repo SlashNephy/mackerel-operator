@@ -92,7 +92,14 @@ func (r *ExternalMonitorReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if !cr.DeletionTimestamp.IsZero() {
 		desired, err := r.externalMonitorDeletionSource().FromExternalMonitor(cr)
 		if err != nil {
-			return ctrl.Result{}, r.removeFinalizer(ctx, cr)
+			log.V(1).Info("Cannot build desired state during deletion with invalid spec; removing finalizer",
+				"error", err.Error())
+			operatorstatus.MarkInvalidSpec(cr, "deletion: "+err.Error())
+			if updateErr := r.Status().Update(ctx, cr); updateErr != nil {
+				return ctrl.Result{}, updateErr
+			}
+			controllerutil.RemoveFinalizer(cr, externalMonitorFinalizer)
+			return ctrl.Result{}, r.Update(ctx, cr)
 		}
 		actual, err := r.findActual(ctx, cr.Status.MonitorID, desired)
 		if err != nil {
