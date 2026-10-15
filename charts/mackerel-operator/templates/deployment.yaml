@@ -39,6 +39,9 @@ spec:
             {{- if .Values.leaderElection.enabled }}
             - --leader-elect
             {{- end }}
+            {{- if .Values.secretWatch.disabled }}
+            - --disable-secret-watch
+            {{- end }}
             - --health-probe-bind-address=:8081
             - --policy={{ .Values.policy }}
             - --owner-id={{ .Values.ownerID }}
