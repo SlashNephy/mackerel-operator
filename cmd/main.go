@@ -67,7 +67,6 @@ func main() {
 	var policy string
 	var ownerID string
 	var hashLength int
-	var secretWatchNamespaces string
 	var disableSecretWatch bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -86,8 +85,6 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&secretWatchNamespaces, "secret-watch-namespaces", "",
-		"Comma-separated namespaces for Secret metadata watches; empty watches all namespaces")
 	flag.BoolVar(&disableSecretWatch, "disable-secret-watch", false,
 		"Disable Secret metadata watches; referenced Secrets are still checked during periodic reconciliation")
 	flag.StringVar(&policy, "policy", "upsert-only", "sync policy: upsert-only or sync")
@@ -185,16 +182,10 @@ func main() {
 
 	ctx := ctrl.SetupSignalHandler()
 
-	secretCache, err := controller.SecretCacheOptions(secretWatchNamespaces, disableSecretWatch)
-	if err != nil {
-		setupLog.Error(err, "Invalid Secret watch configuration")
-		os.Exit(1)
-	}
-	setupLog.Info("Secret watch configuration", "disabled", disableSecretWatch, "namespaces", secretWatchNamespaces)
+	setupLog.Info("Secret watch configuration", "disabled", disableSecretWatch)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		Cache:                  secretCache,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,

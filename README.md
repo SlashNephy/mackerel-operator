@@ -144,20 +144,18 @@ access to the Mackerel API can still read it.
 By default, the operator watches Secret metadata across the cluster and needs
 `get`, `list` and `watch` permissions. Values are read on demand through APIReader.
 
-### Secret watch scope
+### Disabling Secret watches
 
-Use `--secret-watch-namespaces=namespace-a,namespace-b` to scope Secret
-metadata informers while retaining cluster-wide ExternalMonitor discovery.
-`--disable-secret-watch` removes those informers entirely. The two flags are
-mutually exclusive; without either flag, existing cluster-wide behavior remains.
-Secret-backed headers are still refreshed by periodic reconciliation when watches
-are disabled. Secret values continue to use direct API reads rather than the cache.
+Use `--disable-secret-watch` (Helm: `secretWatch.disabled=true`) to omit Secret
+metadata informers. The default retains cluster-wide Secret watches.
+Secret-backed headers still refresh through direct API reads during the periodic
+requeue, normally within one minute after a successful reconciliation.
 
-Grant list/watch only in the selected namespaces, and get only for referenced
-Secret names. With no Secret-backed headers and watches disabled, remove all
-Secret permissions. Metadata-only watches still require RBAC that permits reading
-Secret bodies, so align RBAC with the configured scope.
-
+With watches disabled, the Helm chart grants no Secret permissions. If headers
+reference Secrets, add namespace-local Roles and RoleBindings granting `get` only
+for the referenced Secret names using `resourceNames`. No Secret permissions are
+needed when no headers reference Secrets. The API key injected through
+`mackerel.apiKeySecret` does not require Secret permissions for the operator.
 
 ### Upgrading from a version without `isMute`, `followRedirect`, `skipCertificateVerification`, `maxCheckAttempts`, `requestBody`, or `headers`
 

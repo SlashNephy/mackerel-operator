@@ -17,56 +17,88 @@ limitations under the License.
 package controller
 
 import (
-	"reflect"
-	"testing"
+	"context"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"time"
+
+	mackerelv1alpha1 "github.com/SlashNephy/mackerel-operator/api/v1alpha1"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/config"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 )
 
-func TestSecretCacheOptions(t *testing.T) {
-	for _, tt := range []struct {
-		name, namespaces  string
-		disabled, invalid bool
-		want              []string
-	}{
-		{name: "legacy all namespaces"},
-		{name: "disabled", disabled: true},
-		{name: "scoped", namespaces: "argocd, authentik,argocd", want: []string{"argocd", "authentik"}},
-		{name: "conflicting", namespaces: "argocd", disabled: true, invalid: true},
-		{name: "empty entry", namespaces: "argocd,", invalid: true},
-		{name: "invalid namespace", namespaces: "UPPER", invalid: true},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, err := SecretCacheOptions(tt.namespaces, tt.disabled)
-			if (err != nil) != tt.invalid {
-				t.Fatalf("error=%v, invalid=%v", err, tt.invalid)
+type secretWatchTransport struct {
+	http.RoundTripper
+	requests *atomic.Int64
+}
+
+func (r secretWatchTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == "/api/v1/secrets" || strings.HasSuffix(req.URL.Path, "/secrets") {
+		r.requests.Add(1)
+	}
+	return r.RoundTripper.RoundTrip(req)
+}
+
+var _ = Describe("Secret watch configuration", func() {
+	for _, disabled := range []bool{false, true} {
+		It("starts and syncs the controller with Secret watches disabled="+strconv.FormatBool(disabled), func() {
+			var requests atomic.Int64
+			restConfig := rest.CopyConfig(cfg)
+			restConfig.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+				return secretWatchTransport{RoundTripper: rt, requests: &requests}
 			}
-			if err != nil {
-				return
+			mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
+				Scheme:                 scheme.Scheme,
+				Controller:             config.Controller{SkipNameValidation: new(true)},
+				Metrics:                metricsserver.Options{BindAddress: "0"},
+				HealthProbeBindAddress: "0",
+			})
+			Expect(err).NotTo(HaveOccurred())
+			runCtx, stop := context.WithTimeout(ctx, 20*time.Second)
+			defer stop()
+			r := &ExternalMonitorReconciler{
+				Client: mgr.GetClient(), APIReader: mgr.GetAPIReader(), Scheme: mgr.GetScheme(),
+				Provider: newFakeExternalMonitorProvider(), OwnerID: "test", Policy: "sync", HashLength: 7,
+				DisableSecretWatch: disabled,
 			}
-			if opts.DefaultNamespaces != nil {
-				t.Fatal("ExternalMonitor discovery must remain cluster-wide")
+			Expect(r.SetupWithManager(runCtx, mgr)).To(Succeed())
+			done := make(chan error, 1)
+			go func() { done <- mgr.Start(runCtx) }()
+			defer func() {
+				stop()
+				Eventually(done, 10*time.Second).Should(Receive(Succeed()))
+			}()
+			Eventually(func() bool { return mgr.GetCache().WaitForCacheSync(runCtx) }, 10*time.Second).Should(BeTrue())
+			cr := &mackerelv1alpha1.ExternalMonitor{
+				ObjectMeta: metav1.ObjectMeta{GenerateName: "secret-watch-", Namespace: "default"},
+				Spec:       mackerelv1alpha1.ExternalMonitorSpec{URL: "https://example.com/healthz"},
 			}
-			if len(tt.want) == 0 {
-				if len(opts.ByObject) != 0 {
-					t.Fatal("unexpected Secret cache override")
-				}
-				return
-			}
-			if len(opts.ByObject) != 1 {
-				t.Fatalf("cache overrides=%d", len(opts.ByObject))
-			}
-			for _, obj := range opts.ByObject {
-				want := map[string]bool{}
-				for _, ns := range tt.want {
-					want[ns] = true
-				}
-				got := map[string]bool{}
-				for ns := range obj.Namespaces {
-					got[ns] = true
-				}
-				if !reflect.DeepEqual(got, want) {
-					t.Fatalf("namespaces=%v, want=%v", got, want)
-				}
+			Expect(k8sClient.Create(runCtx, cr)).To(Succeed())
+			defer func() {
+				Expect(k8sClient.Delete(runCtx, cr)).To(Succeed())
+				Eventually(func() bool {
+					return apierrors.IsNotFound(k8sClient.Get(runCtx, client.ObjectKeyFromObject(cr), &mackerelv1alpha1.ExternalMonitor{}))
+				}, 10*time.Second).Should(BeTrue())
+			}()
+			Eventually(func(g Gomega) {
+				g.Expect(k8sClient.Get(runCtx, client.ObjectKeyFromObject(cr), cr)).To(Succeed())
+				g.Expect(cr.Status.MonitorID).NotTo(BeEmpty())
+			}, 10*time.Second).Should(Succeed())
+			if disabled {
+				Consistently(requests.Load, time.Second, 20*time.Millisecond).Should(BeZero())
+			} else {
+				Eventually(requests.Load, 10*time.Second).Should(BeNumerically(">", 0))
 			}
 		})
 	}
-}
+})

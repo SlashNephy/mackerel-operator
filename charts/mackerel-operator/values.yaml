@@ -21,6 +21,10 @@ mackerel:
     name: mackerel-api-key
     key: apiKey
 
+secretWatch:
+  # Omit Secret watches and Secret RBAC; grant get separately for header references.
+  disabled: false
+
 leaderElection:
   enabled: true
 
