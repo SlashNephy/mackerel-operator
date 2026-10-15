@@ -141,10 +141,23 @@ Note that this protects the value at rest in the cluster only. Mackerel stores
 and returns the resolved value like any other header value, so anyone with
 access to the Mackerel API can still read it.
 
-The operator therefore needs `get`, `list` and `watch` on Secrets. Because it
-watches `ExternalMonitor` resources across the whole cluster, that permission is
-granted cluster wide. Only the metadata of Secrets is cached; the values are
-read on demand and are not held in the operator's memory.
+By default, the operator watches Secret metadata across the cluster and needs
+`get`, `list` and `watch` permissions. Values are read on demand through APIReader.
+
+### Secret watch scope
+
+Use `--secret-watch-namespaces=namespace-a,namespace-b` to scope Secret
+metadata informers while retaining cluster-wide ExternalMonitor discovery.
+`--disable-secret-watch` removes those informers entirely. The two flags are
+mutually exclusive; without either flag, existing cluster-wide behavior remains.
+Secret-backed headers are still refreshed by periodic reconciliation when watches
+are disabled. Secret values continue to use direct API reads rather than the cache.
+
+Grant list/watch only in the selected namespaces, and get only for referenced
+Secret names. With no Secret-backed headers and watches disabled, remove all
+Secret permissions. Metadata-only watches still require RBAC that permits reading
+Secret bodies, so align RBAC with the configured scope.
+
 
 ### Upgrading from a version without `isMute`, `followRedirect`, `skipCertificateVerification`, `maxCheckAttempts`, `requestBody`, or `headers`
 

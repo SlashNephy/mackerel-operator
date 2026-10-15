@@ -58,12 +58,13 @@ type ExternalMonitorReconciler struct {
 	// conflict, where a cached read may still return the very version that caused
 	// it, and it reads the Secrets referenced by header values, which are
 	// deliberately not cached. Falls back to Client when nil.
-	APIReader  client.Reader
-	Scheme     *runtime.Scheme
-	Provider   provider.ExternalMonitorProvider
-	OwnerID    string
-	Policy     string
-	HashLength int
+	APIReader          client.Reader
+	Scheme             *runtime.Scheme
+	Provider           provider.ExternalMonitorProvider
+	OwnerID            string
+	Policy             string
+	HashLength         int
+	DisableSecretWatch bool
 }
 
 var errProviderNil = errors.New("external monitor provider is nil")
@@ -302,15 +303,14 @@ func (r *ExternalMonitorReconciler) SetupWithManager(ctx context.Context, mgr ct
 		return fmt.Errorf("index external monitors by referenced secret: %w", err)
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&mackerelv1alpha1.ExternalMonitor{}).
-		// Only the metadata of Secrets is cached. The watch exists to notice a
-		// rotation, and the values themselves are read on demand through
-		// APIReader, so there is no reason to mirror every Secret payload in
-		// the operator's memory.
-		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.externalMonitorsForSecret), builder.OnlyMetadata).
-		Named("externalmonitor").
-		Complete(r)
+		Named("externalmonitor")
+	if !r.DisableSecretWatch {
+		// Cache metadata only; resolve referenced values through APIReader.
+		b = b.Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.externalMonitorsForSecret), builder.OnlyMetadata)
+	}
+	return b.Complete(r)
 }
 
 // externalMonitorsForSecret maps a Secret event to the ExternalMonitors that
