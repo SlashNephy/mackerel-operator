@@ -1,9 +1,9 @@
 module github.com/SlashNephy/mackerel-operator
 
-go 1.26.2
+go 1.26.10
 
 require (
-	github.com/mackerelio/mackerel-client-go v0.47.0
+	github.com/mackerelio/mackerel-client-go v0.48.0
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/stretchr/testify v1.12.1
